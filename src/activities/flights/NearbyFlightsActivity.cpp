@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 #include "CrossPointSettings.h"
 #include "GeoMath.h"
@@ -19,6 +20,7 @@
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "network/AdsbdbClient.h"
 #include "network/OpenSkyClient.h"
 
 namespace {
@@ -172,6 +174,7 @@ bool NearbyFlightsActivity::handleConfirmPressOrRefresh(const bool hasMatches) {
     if (wasShortPress && hasMatches) {
       detailReturnState = state;  // remember LIST vs RADAR so Back returns here
       state = FlightsState::DETAIL;
+      ensureAircraftInfo();
       requestUpdate();
     }
     return true;
@@ -255,6 +258,7 @@ void NearbyFlightsActivity::loop() {
           case ListTouchResult::Activated:
             detailReturnState = FlightsState::LIST;  // touch activation only exists in LIST
             state = FlightsState::DETAIL;
+            ensureAircraftInfo();
             requestUpdate();
             return;
           case ListTouchResult::Consumed:
@@ -520,6 +524,39 @@ void NearbyFlightsActivity::renderRadar() {
   renderer.displayBuffer();
 }
 
+void NearbyFlightsActivity::ensureAircraftInfo() {
+  if (parser.matchCount() == 0) return;
+  const auto& m = parser.matchAt(static_cast<size_t>(selectedIndex));
+
+  // Already cached for this aircraft. An empty icao24 is its own cache key:
+  // there is nothing to look up, but the reset below still must happen so a
+  // match with no icao24 doesn't inherit a *different* aircraft's stale
+  // result left over in aircraftParser from a previous DETAIL visit.
+  if (strcmp(aircraftInfoIcao24, m.icao24) == 0) return;
+
+  aircraftParser.reset();
+  aircraftLookupFailed = false;
+  strncpy(aircraftInfoIcao24, m.icao24, sizeof(aircraftInfoIcao24) - 1);
+  aircraftInfoIcao24[sizeof(aircraftInfoIcao24) - 1] = '\0';
+
+  if (m.icao24[0] == '\0') return;  // nothing to look up; renders as "Type: unknown"
+
+  // Logged separately so the console distinguishes a transport failure from a
+  // JSON parse failure -- both otherwise render the same on screen.
+  const bool ok = AdsbdbClient::fetchAircraftInfo(m.icao24, aircraftParser);
+  if (!ok) {
+    LOG_ERR("FLIGHTS", "AdsbdbClient::fetchAircraftInfo transport failure for %s", m.icao24);
+  }
+  if (aircraftParser.hasError()) {
+    LOG_ERR("FLIGHTS", "AircraftInfoParser reported a JSON parse error for %s", m.icao24);
+  }
+  aircraftLookupFailed = !ok || aircraftParser.hasError();
+  if (!aircraftLookupFailed) {
+    LOG_DBG("FLIGHTS", "Aircraft %s: found=%d type=%s", m.icao24, aircraftParser.info().found ? 1 : 0,
+            aircraftParser.info().icaoType);
+  }
+}
+
 void NearbyFlightsActivity::renderDetail() const {
   renderer.clearScreen();
   const auto& metrics = UITheme::getInstance().getMetrics();
@@ -570,6 +607,26 @@ void NearbyFlightsActivity::renderDetail() const {
   snprintf(line, sizeof(line), tr(STR_FLIGHT_ICAO24_FORMAT), m.icao24);
   renderer.drawText(UI_10_FONT_ID, x, y, line, true);
   y += metrics.listRowHeight;
+
+  const auto& acInfo = aircraftParser.info();
+  if (aircraftLookupFailed) {
+    renderer.drawText(UI_10_FONT_ID, x, y, tr(STR_AIRCRAFT_TYPE_UNAVAILABLE), true);
+    y += metrics.listRowHeight;
+  } else if (!acInfo.found) {
+    renderer.drawText(UI_10_FONT_ID, x, y, tr(STR_AIRCRAFT_TYPE_UNKNOWN), true);
+    y += metrics.listRowHeight;
+  } else {
+    if (acInfo.manufacturer[0] || acInfo.icaoType[0]) {
+      snprintf(line, sizeof(line), tr(STR_AIRCRAFT_TYPE_FORMAT), acInfo.manufacturer, acInfo.icaoType);
+      renderer.drawText(UI_10_FONT_ID, x, y, line, true);
+      y += metrics.listRowHeight;
+    }
+    if (acInfo.registration[0]) {
+      snprintf(line, sizeof(line), tr(STR_AIRCRAFT_REG_FORMAT), acInfo.registration);
+      renderer.drawText(UI_10_FONT_ID, x, y, line, true);
+      y += metrics.listRowHeight;
+    }
+  }
 
   const unsigned long ageSeconds = (millis() - fetchCompletedMs) / 1000;
   snprintf(line, sizeof(line), tr(STR_FLIGHT_DATA_AGE_FORMAT), ageSeconds);

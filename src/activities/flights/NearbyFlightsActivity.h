@@ -1,5 +1,6 @@
 #pragma once
 
+#include "AircraftInfoParser.h"
 #include "OpenSkyStatesParser.h"
 #include "activities/Activity.h"
 #include "util/ButtonNavigator.h"
@@ -47,6 +48,13 @@ class NearbyFlightsActivity final : public Activity {
   // first-ever fetch (before any view has been shown) lands there.
   FlightsState fetchReturnState = FlightsState::LIST;
 
+  // Single-slot cache: going detail -> back -> same detail must not re-fetch.
+  // Deliberately not an N-entry LRU -- one slot covers the common
+  // back-and-forth and the bookkeeping for more is not earned.
+  AircraftInfoParser aircraftParser;
+  char aircraftInfoIcao24[7] = {0};  // which icao24 aircraftParser currently holds
+  bool aircraftLookupFailed = false;
+
   // Long-press Confirm = Refresh, short press = select/detail. getHeldTime()
   // is global rather than per-button, so confirmHeld is what attributes the
   // elapsed time to Confirm -- dropping it makes the check misfire on any
@@ -70,4 +78,7 @@ class NearbyFlightsActivity final : public Activity {
   // Returns true when the caller should stop processing input this frame.
   bool handleConfirmPressOrRefresh(bool hasMatches);
   void renderDetail() const;
+
+  // Fetches the selected aircraft's registry record unless it is already cached.
+  void ensureAircraftInfo();
 };
