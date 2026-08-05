@@ -6,6 +6,7 @@
 #include <algorithm>
 
 #include "OpdsServerStore.h"
+#include "activities/flights/NearbyFlightsActivity.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
@@ -190,6 +191,10 @@ void ActivityManager::goToFileTransfer() {
 
 void ActivityManager::goToSettings() { replaceActivity(std::make_unique<SettingsActivity>(renderer, mappedInput)); }
 
+void ActivityManager::goToNearbyFlights() {
+  replaceActivity(std::make_unique<NearbyFlightsActivity>(renderer, mappedInput));
+}
+
 void ActivityManager::goToFileBrowser(std::string path) {
   replaceActivity(std::make_unique<FileBrowserActivity>(renderer, mappedInput, std::move(path)));
 }
@@ -234,6 +239,8 @@ void ActivityManager::goHome(HomeMenuItem initialMenuItem) {
       initialMenuItem = HomeMenuItem::OPDS_BROWSER;
     } else if (activityName == "CrossPointWebServer") {
       initialMenuItem = HomeMenuItem::FILE_TRANSFER;
+    } else if (activityName == "NearbyFlights") {
+      initialMenuItem = HomeMenuItem::NEARBY_FLIGHTS;
     } else if (activityName == "Settings") {
       initialMenuItem = HomeMenuItem::SETTINGS_MENU;
     }

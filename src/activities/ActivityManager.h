@@ -83,6 +83,7 @@ class ActivityManager {
   // goTo... functions are convenient wrapper for replaceActivity()
   void goToFileTransfer();
   void goToSettings();
+  void goToNearbyFlights();
   void goToFileBrowser(std::string path = {});
   void goToRecentBooks();
   void goToBrowser();
