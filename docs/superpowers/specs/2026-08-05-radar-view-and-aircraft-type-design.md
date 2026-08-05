@@ -28,10 +28,10 @@ so the radar needs no new data, only new rendering.
 
 | Question | Decision |
 |---|---|
-| Radar placement | Toggle inside the existing `NearbyFlightsActivity`, sharing already-fetched data. No new activity, no new fetch, no second Wi-Fi flow |
+| Radar placement | Toggle inside `NearbyFlightsActivity`, sharing fetched data. No new activity, fetch, or Wi-Fi flow |
 | Aircraft marks | Filled triangle rotated to true track |
 | Range rings | Fixed at ⅓, ⅔, and full configured radius; labelled in miles |
-| Selection | Cycle nearest-first; selected mark drawn hollow, larger, ringed, with callsign; Confirm opens the existing detail screen |
+| Selection | Cycle nearest-first; selected mark drawn filled, larger, with a solid ring; Confirm opens detail |
 | Entry view | Still the list — opening the screen behaves exactly as it does today |
 | Type source | [adsbdb.com](https://api.adsbdb.com) — free, keyless, HTTPS |
 | Type lookup timing | On entering the **detail** screen only, for that one aircraft |
@@ -81,11 +81,38 @@ Layout, all derived from `renderer.getScreenWidth()`/`getScreenHeight()` and
   by (bearing, distance) and rotated to `headingDeg`. Aircraft with no
   heading (`hasHeading == false`) draw as an unrotated triangle pointing up;
   they are not hidden.
-- **Selected aircraft** drawn hollow, larger, with a dashed selection ring
-  and its callsign beside it.
+- **Selected aircraft** drawn as the same filled triangle, larger, with a
+  solid selection ring around it. (Shipped as filled/solid rather than the
+  hollow-glyph-plus-dashed-ring-plus-adjacent-label originally planned here —
+  see "Implementation note" below.)
 - **Detail strip** below the plot: the selected aircraft's callsign,
-  distance + compass bearing, altitude, speed, heading, and climb/descent —
-  the same values the detail screen shows, minus the on-demand type.
+  distance + compass bearing, and altitude — three lines, not the full set
+  originally planned (see "Implementation note" below).
+
+**Implementation note (added after shipping):** this section originally
+called for the selected mark drawn *hollow* with a *dashed* ring and its
+*callsign beside it*, and a six-value detail strip (callsign, distance,
+altitude, speed, heading, climb/descent). What shipped instead is a filled,
+larger triangle with a solid ring and no adjacent label, and a three-line
+strip (callsign, distance, altitude). The drift was never reconciled back
+into this spec at the time; this note corrects that after the fact, with the
+best available reasoning for each:
+
+- *Mark style* (filled vs. hollow, solid vs. dashed ring, no adjacent
+  label): a hollow glyph is barely legible at the ~15px mark size on a 1-bit
+  e-ink panel — no anti-aliasing and no gray fill to read as "outlined", so a
+  thin outline at that size tends to disappear or alias into noise. An
+  adjacent callsign label also clutters fast with up to `MAX_MATCHES` (20)
+  marks on screen, several of which can sit close together near the plot
+  centre at short range, each needing its own label placement to avoid
+  overlapping neighbours or other marks.
+- *Three-line strip instead of six*: the three dropped fields (speed,
+  heading, climb/descent) are redundant with the existing detail screen,
+  one Confirm press away, and a taller reserved strip would tighten the
+  plot's vertical budget further on already-tight layouts — the detail
+  screen's own rendering (`NearbyFlightsActivity::renderDetail`) already
+  has to truncate lower-priority fields on the tightest theme+orientation
+  combination it supports.
 
 Radius in pixels is `min(usableWidth, usableHeight) / 2 - margin`, so
 landscape orientations (800×480) shrink the circle to fit height rather than
