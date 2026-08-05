@@ -559,6 +559,15 @@ void NearbyFlightsActivity::ensureAircraftInfo() {
   if (!aircraftLookupFailed && strcmp(aircraftInfoIcao24, m.icao24) == 0) return;
 
   aircraftParser.reset();
+  // Cleared immediately (not just left stale) so this also covers the
+  // same-aircraft-retry-after-failure case: without this, the guard above
+  // falls through with aircraftInfoIcao24 still equal to m.icao24 (it was
+  // written unconditionally at the end of the previous, failed attempt --
+  // see the strncpy below), so a render landing after this point but before
+  // aircraftLookupFailed is reset to false would see a "matching" key and a
+  // "found == false" (just-reset) parser and render the definitive-sounding
+  // "Type: unknown" for a retry that hasn't even started.
+  aircraftInfoIcao24[0] = '\0';
   aircraftLookupFailed = false;
 
   if (m.icao24[0] == '\0') {
@@ -566,11 +575,11 @@ void NearbyFlightsActivity::ensureAircraftInfo() {
     return;
   }
 
-  // aircraftInfoIcao24 is deliberately NOT updated yet -- it still names
-  // whatever aircraft was cached before, so renderDetail()'s infoPending
-  // check (aircraftInfoIcao24 != m.icao24) stays true for the whole blocking
-  // call below, no matter when the render task happens to run relative to
-  // this one (ActivityManagerRender and the Arduino loop task share the same
+  // aircraftInfoIcao24 was just cleared above and is not rewritten until the
+  // attempt below completes, so renderDetail()'s infoPending check
+  // (aircraftInfoIcao24 != m.icao24) stays true for the whole blocking call,
+  // no matter when the render task happens to run relative to this one
+  // (ActivityManagerRender and the Arduino loop task share the same
   // FreeRTOS priority, so there's no ordering guarantee between the
   // requestUpdate(true) at the DETAIL-entry call sites and this function
   // actually running). Writing the key here first would let a render task
