@@ -34,6 +34,19 @@ class NearbyFlightsActivity final : public Activity {
   // behaves as it always has.
   FlightsState detailReturnState = FlightsState::LIST;
 
+  // Same problem, for fetchFlights(): a successful fetch used to always land
+  // on LIST because LIST was the only view that could trigger one. RADAR's
+  // long-press Refresh now triggers the same fetch, so fetchFlights() must
+  // land back on whichever view asked for it. Only ever set to LIST or RADAR,
+  // and only at the two points where the user was actually looking at one of
+  // those views (the long-press handler, and onEnter's cold start). It is
+  // deliberately left untouched by checkAndConnectWifi(),
+  // launchWifiSelection(), onWifiSelectionComplete(), and the ERROR-state
+  // retry -- those are all just legs of the same fetch attempt, and must
+  // preserve whichever view originally asked for it. Defaults to LIST so the
+  // first-ever fetch (before any view has been shown) lands there.
+  FlightsState fetchReturnState = FlightsState::LIST;
+
   // Long-press Confirm = Refresh, short press = select/detail. getHeldTime()
   // is global rather than per-button, so confirmHeld is what attributes the
   // elapsed time to Confirm -- dropping it makes the check misfire on any

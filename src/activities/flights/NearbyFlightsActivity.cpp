@@ -66,6 +66,9 @@ void NearbyFlightsActivity::onEnter() {
     return;
   }
 
+  // Cold start: no view has been shown yet, so a successful fetch should land
+  // on LIST, same as it always has.
+  fetchReturnState = FlightsState::LIST;
   state = FlightsState::CHECK_WIFI;
   requestUpdate();
   checkAndConnectWifi();
@@ -142,7 +145,7 @@ void NearbyFlightsActivity::fetchFlights() {
 
   fetchCompletedMs = millis();
   selectedIndex = 0;
-  state = FlightsState::LIST;
+  state = fetchReturnState;  // whichever of LIST/RADAR asked for this fetch
   LOG_DBG("FLIGHTS", "Fetched %u matching aircraft", static_cast<unsigned>(parser.matchCount()));
   requestUpdate();
 }
@@ -157,7 +160,8 @@ bool NearbyFlightsActivity::handleConfirmPressOrRefresh(const bool hasMatches) {
       mappedInput.getHeldTime() > LONG_PRESS_MS) {
     confirmLongHandled = true;
     confirmHeld = false;
-    checkAndConnectWifi();  // "Refresh"
+    fetchReturnState = state;  // remember LIST vs RADAR so a successful refetch returns here
+    checkAndConnectWifi();     // "Refresh"
     return true;
   }
 
