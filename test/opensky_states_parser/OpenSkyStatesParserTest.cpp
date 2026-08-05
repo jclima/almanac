@@ -166,3 +166,82 @@ TEST(OpenSkyStatesParser, KeepsOnlyClosestMaxMatchesSorted) {
   // The closest aircraft (index 0, lat offset 0.01) must be kept.
   EXPECT_STREQ(parser.matchAt(0).icao24, "000000");
 }
+
+TEST(OpenSkyStatesParser, EvictsFarthestWhenCloserAircraftArrivesAfterCapReached) {
+  // First fill the array to exactly MAX_MATCHES with aircraft "a0".."a19" at
+  // increasing distances (lat offsets 0.01 .. 0.20, farthest last). Once the
+  // cap has already been reached, several MORE aircraft "b0".."b4" arrive
+  // that are closer than everything already in the array (lat offsets
+  // 0.001 .. 0.005, all smaller than "a0"'s 0.01). Each of these must trigger
+  // the eviction branch in insertSorted: the array must stay at MAX_MATCHES,
+  // stay sorted ascending, and the closer newcomers must displace the
+  // previously-farthest entries ("a15".."a19" -- the 5 farthest of the
+  // original 20) rather than merely failing to be admitted.
+  std::string json = R"({"time": 1700000000, "states": [)";
+
+  const int farCount = static_cast<int>(OpenSkyStatesParser::MAX_MATCHES);  // 20
+  for (int i = 0; i < farCount; ++i) {
+    char row[256];
+    const double lat = HOME_LAT + 0.01 * (i + 1);  // 0.01 .. 0.20
+    snprintf(row, sizeof(row),
+             "[\"a%04x\",\"FAR%03d  \",\"United States\",1699999999,1699999999,%.4f,%.4f,1000.0,false,90.0,0.0,0.0,"
+             "null,1050.0,\"1200\",false,0,0]",
+             i, i, HOME_LON, lat);
+    json += row;
+    json += ",";
+  }
+
+  const int closeCount = 5;
+  for (int j = 0; j < closeCount; ++j) {
+    char row[256];
+    const double lat = HOME_LAT + 0.001 * (j + 1);  // 0.001 .. 0.005 -- closer than every "a"
+    snprintf(row, sizeof(row),
+             "[\"b%04x\",\"NEAR%03d \",\"United States\",1699999999,1699999999,%.4f,%.4f,1000.0,false,90.0,0.0,0.0,"
+             "null,1050.0,\"1200\",false,0,0]",
+             j, j, HOME_LON, lat);
+    json += row;
+    if (j + 1 < closeCount) json += ",";
+  }
+  json += "]}";
+
+  OpenSkyStatesParser parser;
+  parser.reset(HOME_LAT, HOME_LON, 1000.0);  // huge radius: every aircraft is a candidate
+  feedAll(parser, json);
+
+  ASSERT_FALSE(parser.hasError());
+  // Cap must never be exceeded even though 25 candidates were fed.
+  ASSERT_EQ(parser.matchCount(), OpenSkyStatesParser::MAX_MATCHES);
+
+  for (size_t i = 1; i < parser.matchCount(); ++i) {
+    EXPECT_LE(parser.matchAt(i - 1).distanceMiles, parser.matchAt(i).distanceMiles);
+  }
+
+  auto contains = [&](const char* icao) {
+    for (size_t i = 0; i < parser.matchCount(); ++i) {
+      if (strcmp(parser.matchAt(i).icao24, icao) == 0) return true;
+    }
+    return false;
+  };
+
+  // The 5 late-arriving closer aircraft must have been admitted.
+  EXPECT_TRUE(contains("b0000"));
+  EXPECT_TRUE(contains("b0001"));
+  EXPECT_TRUE(contains("b0002"));
+  EXPECT_TRUE(contains("b0003"));
+  EXPECT_TRUE(contains("b0004"));
+
+  // The 5 originally-farthest aircraft ("a15".."a19", lat offsets 0.16..0.20)
+  // must have been evicted to make room.
+  EXPECT_FALSE(contains("a000f"));  // a15 (index 15 = 0xf)
+  EXPECT_FALSE(contains("a0010"));  // a16
+  EXPECT_FALSE(contains("a0011"));  // a17
+  EXPECT_FALSE(contains("a0012"));  // a18
+  EXPECT_FALSE(contains("a0013"));  // a19
+
+  // The remaining originally-nearer aircraft ("a0".."a14") must still be present.
+  for (int i = 0; i < 15; ++i) {
+    char icao[8];
+    snprintf(icao, sizeof(icao), "a%04x", i);
+    EXPECT_TRUE(contains(icao)) << "expected " << icao << " to still be present";
+  }
+}
