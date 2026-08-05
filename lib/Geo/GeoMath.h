@@ -46,7 +46,10 @@ ScreenPoint polarToScreen(double distanceMiles, double bearingDeg, double maxRan
 // Fills xs[4]/ys[4] with an arrow-like quadrilateral centred on (cx,cy),
 // rotated so its nose points along headingDeg (0 = up/north, clockwise).
 // xs[0]/ys[0] is always the nose. `size` is the centre-to-nose distance in
-// pixels. Output feeds GfxRenderer::fillPolygon directly.
+// pixels, but the two rear vertices sit farther out, at ~1.04*size from
+// centre (for any heading) -- callers sizing a bounding box or clip margin
+// should budget for that, not just `size`. Output feeds GfxRenderer::fillPolygon
+// directly.
 void headingTriangle(int cx, int cy, double headingDeg, int size, int xs[4], int ys[4]);
 
 }  // namespace GeoMath
