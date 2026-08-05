@@ -318,6 +318,18 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
         // is hidden from the on-device Settings screen (edited via OPDS UI).
         SettingInfo::String(StrId::STR_OPDS_DOWNLOAD_FOLDER, &SETTINGS.opdsDownloadFolder[0],
                             sizeof(SETTINGS.opdsDownloadFolder), "opdsDownloadFolder"),
+        // Flight tracker home location + search radius: persisted, category-less so
+        // it stays out of the on-device Settings screen (edited via
+        // FlightTrackerSettingsActivity, Task 5).
+        SettingInfo::String(StrId::STR_FLIGHT_TRACKER_HOME_LAT, &SETTINGS.flightTrackerHomeLat[0],
+                            sizeof(SETTINGS.flightTrackerHomeLat), "flightTrackerHomeLat"),
+        SettingInfo::String(StrId::STR_FLIGHT_TRACKER_HOME_LON, &SETTINGS.flightTrackerHomeLon[0],
+                            sizeof(SETTINGS.flightTrackerHomeLon), "flightTrackerHomeLon"),
+        SettingInfo::Value(
+            StrId::STR_FLIGHT_TRACKER_RADIUS, &CrossPointSettings::flightTrackerRadiusMiles,
+            {CrossPointSettings::FLIGHT_TRACKER_RADIUS_MIN, CrossPointSettings::FLIGHT_TRACKER_RADIUS_MAX,
+             CrossPointSettings::FLIGHT_TRACKER_RADIUS_STEP},
+            "flightTrackerRadiusMiles"),
         // OPDS download filename format: persisted + web-exposed, category-less so it
         // is hidden from the on-device Settings screen (cycled from the OPDS UI).
         SettingInfo::Enum(StrId::STR_OPDS_FILENAME_FORMAT, &CrossPointSettings::opdsFilenameFormat,

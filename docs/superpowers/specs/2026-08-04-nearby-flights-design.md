@@ -103,8 +103,9 @@ A `StreamingJsonParser` consumer, structured like `ReleaseJsonParser`
   to parse; the mitigation is reducing the configured radius, not further
   parser complexity.
 - Exposes `count()` and `const FlightMatch& at(size_t i)` for the activity
-  to render, plus `responseTimestamp()` (the top-level `time` field) so the
-  UI can show data age.
+  to render. A `responseTimestamp()` accessor for the top-level `time` field
+  was scoped here but not implemented — see "Data age" under
+  `NearbyFlightsActivity` below for what ships instead and why.
 
 ### `OpenSkyClient`
 
@@ -145,7 +146,19 @@ States: `CHECK_WIFI, WIFI_SELECTION, LOADING, LIST, DETAIL, ERROR`, following
   Activity/nav-stack entry): callsign, ICAO24, origin country, altitude,
   ground speed (mph), heading (true track, degrees + compass letter), climb/
   descend/level derived from vertical rate, distance + bearing, and data age
-  ("as of Ns ago", from `responseTimestamp()` vs. current time).
+  ("as of Ns ago").
+  - **Data age, as actually built:** rather than parsing OpenSky's top-level
+    `time` field, the activity records `fetchCompletedMs = millis()` when a
+    fetch completes and renders `(millis() - fetchCompletedMs) / 1000` as the
+    age. This is a simplification, not the `responseTimestamp()` design
+    above — it measures time since the *device's* fetch, not since OpenSky
+    computed the snapshot, so it reads "As of 0s ago" immediately after a
+    refresh even though OpenSky's own data has ~10s resolution. It was kept
+    because it avoids parsing and threading an extra top-level field through
+    the streaming parser for a display that's already approximate, and it
+    sidesteps device-clock-vs-server-clock skew entirely. The tradeoff: the
+    displayed age understates true data staleness by up to OpenSky's
+    refresh interval.
 - `ERROR`: shows the failure (no Wi-Fi, HTTP failure, parse failure) with a
   retry action back to `LOADING`.
 

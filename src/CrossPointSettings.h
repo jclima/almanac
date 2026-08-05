@@ -237,6 +237,15 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // OPDS server list. Persisted via a category-less SettingInfo::String in
   // SettingsList.h, so it stays out of the on-device Settings screen.
   char opdsDownloadFolder[64] = "";
+  // Flight tracker home location, decimal degrees as text ("" = unset). Manually
+  // edited via FlightTrackerSettingsActivity; kept out of the generic Settings UI
+  // (category-less), same pattern as opdsDownloadFolder.
+  char flightTrackerHomeLat[16] = "";
+  char flightTrackerHomeLon[16] = "";
+  static constexpr uint8_t FLIGHT_TRACKER_RADIUS_MIN = 5;
+  static constexpr uint8_t FLIGHT_TRACKER_RADIUS_MAX = 200;
+  static constexpr uint8_t FLIGHT_TRACKER_RADIUS_STEP = 5;
+  uint8_t flightTrackerRadiusMiles = 30;
   // On-disk filename format for OPDS downloads (0=Author-Title default, 1=Title-Author,
   // 2=Title). See OpdsFilenameFormat. Persisted via a category-less SettingInfo::Enum,
   // edited from the OPDS server list; hidden from the on-device Settings screen.
