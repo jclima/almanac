@@ -26,6 +26,14 @@ class NearbyFlightsActivity final : public Activity {
   std::string errorMessage;
   unsigned long fetchCompletedMs = 0;
 
+  // DETAIL is a state within this same Activity, not a pushed child, so there
+  // is no back-stack to return through -- whichever code sends `state` to
+  // DETAIL must also record where Back should land. Every assignment of
+  // FlightsState::DETAIL must set this immediately beforehand. Defaults to
+  // LIST so any path that somehow reaches DETAIL without doing so still
+  // behaves as it always has.
+  FlightsState detailReturnState = FlightsState::LIST;
+
   // Long-press Confirm = Refresh, short press = select/detail. getHeldTime()
   // is global rather than per-button, so confirmHeld is what attributes the
   // elapsed time to Confirm -- dropping it makes the check misfire on any

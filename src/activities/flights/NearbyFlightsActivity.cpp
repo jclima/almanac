@@ -166,6 +166,7 @@ bool NearbyFlightsActivity::handleConfirmPressOrRefresh(const bool hasMatches) {
     confirmHeld = false;
     confirmLongHandled = false;
     if (wasShortPress && hasMatches) {
+      detailReturnState = state;  // remember LIST vs RADAR so Back returns here
       state = FlightsState::DETAIL;
       requestUpdate();
     }
@@ -220,7 +221,7 @@ void NearbyFlightsActivity::loop() {
 
     case FlightsState::DETAIL:
       if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-        state = FlightsState::LIST;
+        state = detailReturnState;  // back to whichever of LIST/RADAR opened this
         requestUpdate();
       }
       return;
@@ -248,6 +249,7 @@ void NearbyFlightsActivity::loop() {
             renderer.getScreenHeight() - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing * 2;
         switch (handleListTouch(selectedIndex, matchCount, contentTop, contentHeight, true)) {
           case ListTouchResult::Activated:
+            detailReturnState = FlightsState::LIST;  // touch activation only exists in LIST
             state = FlightsState::DETAIL;
             requestUpdate();
             return;
