@@ -6,6 +6,7 @@
 #include <Logging.h>
 #include <WiFi.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -19,6 +20,20 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "network/OpenSkyClient.h"
+
+namespace {
+// GfxRenderer has no circle primitive; drawArc renders a single quadrant
+// selected by the xDir/yDir signs. Four calls make one full circle. The axis
+// row/column is drawn twice (once by each adjacent quadrant), which is
+// harmless because fillRect sets pixels rather than toggling them.
+void drawCircle(const GfxRenderer& renderer, int radius, int cx, int cy, int lineWidth) {
+  if (radius <= 0) return;
+  renderer.drawArc(radius, cx, cy, -1, -1, lineWidth, true);
+  renderer.drawArc(radius, cx, cy, 1, -1, lineWidth, true);
+  renderer.drawArc(radius, cx, cy, 1, 1, lineWidth, true);
+  renderer.drawArc(radius, cx, cy, -1, 1, lineWidth, true);
+}
+}  // namespace
 
 bool NearbyFlightsActivity::parseHomeLocation(double& lat, double& lon) const {
   if (SETTINGS.flightTrackerHomeLat[0] == '\0' || SETTINGS.flightTrackerHomeLon[0] == '\0') return false;
@@ -132,7 +147,48 @@ void NearbyFlightsActivity::fetchFlights() {
   requestUpdate();
 }
 
+bool NearbyFlightsActivity::handleConfirmPressOrRefresh(const bool hasMatches) {
+  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+    confirmHeld = true;
+    confirmLongHandled = false;
+  }
+
+  if (confirmHeld && !confirmLongHandled && mappedInput.isPressed(MappedInputManager::Button::Confirm) &&
+      mappedInput.getHeldTime() > LONG_PRESS_MS) {
+    confirmLongHandled = true;
+    confirmHeld = false;
+    checkAndConnectWifi();  // "Refresh"
+    return true;
+  }
+
+  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    const bool wasShortPress = confirmHeld && !confirmLongHandled;
+    confirmHeld = false;
+    confirmLongHandled = false;
+    if (wasShortPress && hasMatches) {
+      state = FlightsState::DETAIL;
+      requestUpdate();
+    }
+    return true;
+  }
+
+  return false;
+}
+
 void NearbyFlightsActivity::loop() {
+  // checkAndConnectWifi() above can change `state` synchronously (e.g. LIST
+  // -> ERROR on a failed refetch) while Confirm is still physically held
+  // down. The eventual release then arrives after state has already moved
+  // on; without this guard it falls through to the new state's own Confirm
+  // handler (e.g. ERROR's tap-to-retry) and fires an unwanted second fetch.
+  // confirmLongHandled is only ever true right after that happens, so this
+  // check is a no-op on every ordinary short press.
+  if (confirmLongHandled && mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    confirmHeld = false;
+    confirmLongHandled = false;
+    return;
+  }
+
   switch (state) {
     case FlightsState::WIFI_SELECTION:
       return;  // WifiSelectionActivity owns input while pushed
@@ -176,15 +232,12 @@ void NearbyFlightsActivity::loop() {
         onGoHome(HomeMenuItem::NEARBY_FLIGHTS);
         return;
       }
-      if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-        if (matchCount > 0) {
-          state = FlightsState::DETAIL;
-          requestUpdate();
-        }
+      if (handleConfirmPressOrRefresh(matchCount > 0)) {
         return;
       }
       if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
-        checkAndConnectWifi();  // "Refresh" -- re-enters LOADING
+        state = FlightsState::RADAR;  // toggle to radar
+        requestUpdate();
         return;
       }
 
@@ -215,6 +268,35 @@ void NearbyFlightsActivity::loop() {
       }
       return;
     }
+
+    case FlightsState::RADAR: {
+      const auto matchCount = static_cast<int>(parser.matchCount());
+
+      if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+        onGoHome(HomeMenuItem::NEARBY_FLIGHTS);
+        return;
+      }
+      if (handleConfirmPressOrRefresh(matchCount > 0)) {
+        return;
+      }
+      if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
+        state = FlightsState::LIST;  // toggle back to the list
+        requestUpdate();
+        return;
+      }
+
+      if (matchCount > 0) {
+        buttonNavigator.onNextRelease([this, matchCount] {
+          selectedIndex = ButtonNavigator::nextIndex(selectedIndex, matchCount);
+          requestUpdate();
+        });
+        buttonNavigator.onPreviousRelease([this, matchCount] {
+          selectedIndex = ButtonNavigator::previousIndex(selectedIndex, matchCount);
+          requestUpdate();
+        });
+      }
+      return;
+    }
   }
 }
 
@@ -234,6 +316,9 @@ void NearbyFlightsActivity::render(RenderLock&&) {
       return;
     case FlightsState::LIST:
       renderList();
+      return;
+    case FlightsState::RADAR:
+      renderRadar();
       return;
     case FlightsState::DETAIL:
       renderDetail();
@@ -312,7 +397,119 @@ void NearbyFlightsActivity::renderList() {
         });
   }
 
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_REFRESH), tr(STR_DIR_DOWN));
+  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_RADAR), tr(STR_DIR_DOWN));
+  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  renderer.displayBuffer();
+}
+
+void NearbyFlightsActivity::renderRadar() {
+  renderer.clearScreen();
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const auto pageWidth = renderer.getScreenWidth();
+  const auto pageHeight = renderer.getScreenHeight();
+
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_NEARBY_FLIGHTS));
+
+  const auto matchCount = static_cast<int>(parser.matchCount());
+  const double maxRange = SETTINGS.flightTrackerRadiusMiles;
+
+  // Reserve four rows at the bottom for the selected-aircraft readout, above
+  // the button hints. Everything derives from theme metrics -- headerHeight
+  // alone varies 45..84 across the shipped themes.
+  const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
+  const int stripHeight = metrics.listRowHeight * 3;
+  const int plotBottom = pageHeight - metrics.buttonHintsHeight - metrics.verticalSpacing * 2 - stripHeight;
+  const int plotHeight = plotBottom - contentTop;
+
+  if (matchCount == 0) {
+    char message[48];
+    snprintf(message, sizeof(message), tr(STR_NO_FLIGHTS_FORMAT), static_cast<int>(SETTINGS.flightTrackerRadiusMiles));
+    renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, message);
+    const auto emptyLabels = mappedInput.mapLabels(tr(STR_BACK), "", tr(STR_LIST_VIEW), "");
+    GUI.drawButtonHints(renderer, emptyLabels.btn1, emptyLabels.btn2, emptyLabels.btn3, emptyLabels.btn4);
+    renderer.displayBuffer();
+    return;
+  }
+
+  const int cx = pageWidth / 2;
+  const int cy = contentTop + plotHeight / 2;
+  // Fit the circle to whichever axis is tighter, so landscape orientations
+  // shrink the plot instead of clipping it.
+  const int radiusPx = std::min(pageWidth / 2, plotHeight / 2) - metrics.contentSidePadding;
+
+  // Range rings. drawArc renders ONE QUADRANT per call, selected by the
+  // xDir/yDir signs: (-1,-1) top-left, (1,-1) top-right, (1,1) bottom-right,
+  // (-1,1) bottom-left. Four calls = one full circle. lineWidth must stay
+  // well below the radius or the ring fills into a solid disc.
+  static constexpr int RING_COUNT = 3;
+  for (int ring = 1; ring <= RING_COUNT; ++ring) {
+    const int r = radiusPx * ring / RING_COUNT;
+    const int lineWidth = (ring == RING_COUNT) ? 2 : 1;
+    drawCircle(renderer, r, cx, cy, lineWidth);
+
+    char ringLabel[12];
+    if (ring == RING_COUNT) {
+      snprintf(ringLabel, sizeof(ringLabel), tr(STR_RADAR_RANGE_OUTER_FORMAT), static_cast<int>(maxRange));
+    } else {
+      snprintf(ringLabel, sizeof(ringLabel), "%d", static_cast<int>(maxRange * ring / RING_COUNT));
+    }
+    renderer.drawText(UI_10_FONT_ID, cx + 6, cy - r - 2, ringLabel, true);
+  }
+
+  // Crosshair and compass letters.
+  renderer.drawLine(cx, cy - radiusPx, cx, cy + radiusPx, true);
+  renderer.drawLine(cx - radiusPx, cy, cx + radiusPx, cy, true);
+  renderer.drawText(UI_10_FONT_ID, cx - 4, cy - radiusPx - 22, "N", true);
+  renderer.drawText(UI_10_FONT_ID, cx - 4, cy + radiusPx + 6, "S", true);
+  renderer.drawText(UI_10_FONT_ID, cx + radiusPx + 6, cy - 8, "E", true);
+  renderer.drawText(UI_10_FONT_ID, cx - radiusPx - 14, cy - 8, "W", true);
+
+  // Home location.
+  renderer.fillRect(cx - 2, cy - 2, 5, 5, true);
+
+  // Aircraft. fillPolygon malloc()s a small node buffer per call, so this is
+  // up to MAX_MATCHES(20) 16-byte alloc/free pairs per frame. They are tiny,
+  // immediately freed, and identically sized, so the allocator reuses the same
+  // block rather than fragmenting -- and radar frames only render on user
+  // input, never continuously. Accepted deliberately; revisit if heap
+  // instrumentation shows otherwise.
+  static constexpr int MARK_SIZE = 11;
+  static constexpr int SELECTED_MARK_SIZE = 15;
+  for (int i = 0; i < matchCount; ++i) {
+    const auto& m = parser.matchAt(static_cast<size_t>(i));
+    const auto p = GeoMath::polarToScreen(m.distanceMiles, m.bearingDeg, maxRange, cx, cy, radiusPx);
+    const bool isSelected = (i == selectedIndex);
+    // Aircraft with no reported track draw nose-up rather than vanishing.
+    const double heading = m.hasHeading ? static_cast<double>(m.headingDeg) : 0.0;
+
+    int xs[4];
+    int ys[4];
+    GeoMath::headingTriangle(p.x, p.y, heading, isSelected ? SELECTED_MARK_SIZE : MARK_SIZE, xs, ys);
+    renderer.fillPolygon(xs, ys, 4, true);
+
+    if (isSelected) {
+      drawCircle(renderer, SELECTED_MARK_SIZE + 7, p.x, p.y, 1);
+    }
+  }
+
+  // Selected-aircraft readout.
+  const auto& sel = parser.matchAt(static_cast<size_t>(selectedIndex));
+  const int textX = metrics.contentSidePadding;
+  int textY = plotBottom + metrics.verticalSpacing;
+  char line[64];
+
+  renderer.drawText(UI_10_FONT_ID, textX, textY, sel.callsign[0] ? sel.callsign : tr(STR_UNKNOWN_CALLSIGN), true);
+  snprintf(line, sizeof(line), tr(STR_FLIGHT_DISTANCE_FORMAT), sel.distanceMiles,
+           GeoMath::compassPoint(sel.bearingDeg));
+  renderer.drawText(UI_10_FONT_ID, textX, textY + metrics.listRowHeight, line, true);
+
+  if (sel.hasAltitudeFeet) {
+    snprintf(line, sizeof(line), tr(STR_FLIGHT_ALTITUDE_FORMAT), static_cast<long>(sel.altitudeFeet));
+    renderer.drawText(UI_10_FONT_ID, textX, textY + metrics.listRowHeight * 2, line, true);
+  }
+
+  const auto labels =
+      mappedInput.mapLabels(tr(STR_BACK), tr(STR_FLIGHT_DETAIL), tr(STR_LIST_VIEW), tr(STR_NEXT_AIRCRAFT));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   renderer.displayBuffer();
 }
