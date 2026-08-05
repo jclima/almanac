@@ -56,4 +56,46 @@ BoundingBox computeBoundingBox(const double lat, const double lon, const double 
   return BoundingBox{lat - latSpan, lon - lonSpan, lat + latSpan, lon + lonSpan};
 }
 
+ScreenPoint polarToScreen(const double distanceMiles, const double bearingDeg, const double maxRangeMiles,
+                          const int cx, const int cy, const int radiusPx) {
+  if (maxRangeMiles <= 0.0 || radiusPx <= 0) {
+    return ScreenPoint{cx, cy};
+  }
+
+  double ratio = distanceMiles / maxRangeMiles;
+  if (ratio < 0.0) ratio = 0.0;
+  if (ratio > 1.0) ratio = 1.0;  // clamp over-range aircraft to the outer ring
+
+  const double r = ratio * radiusPx;
+  const double theta = normalizeDegrees(bearingDeg) * DEG_TO_RAD;
+
+  // Bearing 0 = north = up, so it maps to -y; bearing 90 = east = +x.
+  const double dx = r * std::sin(theta);
+  const double dy = -r * std::cos(theta);
+
+  return ScreenPoint{cx + static_cast<int>(std::lround(dx)), cy + static_cast<int>(std::lround(dy))};
+}
+
+void headingTriangle(const int cx, const int cy, const double headingDeg, const int size, int xs[4], int ys[4]) {
+  // Unrotated glyph, nose pointing up (-y), expressed as fractions of `size`:
+  // nose, right-rear, tail notch, left-rear. The notch is what makes it read
+  // as an arrow rather than a plain triangle at ~12px on e-ink.
+  static constexpr double SHAPE_X[4] = {0.0, 0.64, 0.0, -0.64};
+  static constexpr double SHAPE_Y[4] = {-1.0, 0.82, 0.36, 0.82};
+
+  const double theta = normalizeDegrees(headingDeg) * DEG_TO_RAD;
+  const double c = std::cos(theta);
+  const double s = std::sin(theta);
+
+  for (int i = 0; i < 4; ++i) {
+    const double px = SHAPE_X[i] * size;
+    const double py = SHAPE_Y[i] * size;
+    // Clockwise rotation in screen coords (+y down).
+    const double rx = px * c - py * s;
+    const double ry = px * s + py * c;
+    xs[i] = cx + static_cast<int>(std::lround(rx));
+    ys[i] = cy + static_cast<int>(std::lround(ry));
+  }
+}
+
 }  // namespace GeoMath

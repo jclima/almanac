@@ -28,4 +28,25 @@ struct BoundingBox {
 // equirectangular approximation -- fine at these radii, not valid near the poles.
 BoundingBox computeBoundingBox(double lat, double lon, double radiusMiles);
 
+struct ScreenPoint {
+  int x;
+  int y;
+};
+
+// Maps a (distance, bearing) polar pair onto a radar plot. Screen coords are
+// +x right and +y DOWN; bearing 0 is north (up) and increases clockwise, so
+// bearing 90 lands due right of centre.
+//
+// Distances at or beyond maxRangeMiles clamp to the outer ring instead of
+// escaping the plot. A maxRangeMiles of 0 collapses everything to the centre
+// rather than dividing by zero.
+ScreenPoint polarToScreen(double distanceMiles, double bearingDeg, double maxRangeMiles, int cx, int cy,
+                          int radiusPx);
+
+// Fills xs[4]/ys[4] with an arrow-like quadrilateral centred on (cx,cy),
+// rotated so its nose points along headingDeg (0 = up/north, clockwise).
+// xs[0]/ys[0] is always the nose. `size` is the centre-to-nose distance in
+// pixels. Output feeds GfxRenderer::fillPolygon directly.
+void headingTriangle(int cx, int cy, double headingDeg, int size, int xs[4], int ys[4]);
+
 }  // namespace GeoMath
