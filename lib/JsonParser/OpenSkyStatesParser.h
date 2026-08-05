@@ -10,8 +10,6 @@ struct FlightMatch {
   char icao24[7] = {0};
   char callsign[9] = {0};  // trimmed; may be empty if OpenSky has no callsign
   char originCountry[32] = {0};
-  double latitude = 0;
-  double longitude = 0;
   bool hasAltitudeFeet = false;
   int32_t altitudeFeet = 0;  // prefers geo_altitude, falls back to baro_altitude
   bool hasSpeedMph = false;

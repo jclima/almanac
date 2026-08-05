@@ -167,6 +167,23 @@ TEST(OpenSkyStatesParser, KeepsOnlyClosestMaxMatchesSorted) {
   EXPECT_STREQ(parser.matchAt(0).icao24, "000000");
 }
 
+TEST(OpenSkyStatesParser, NullStatesDoesNotLeaveStaleExpectStatesArrayForLaterArray) {
+  // "states": null is a top-level scalar, not an array. A later, unrelated
+  // top-level array must never be mis-adopted as the states array just
+  // because expectStatesArray was left set from processing the null value
+  // (regression test for that bug).
+  OpenSkyStatesParser parser;
+  parser.reset(HOME_LAT, HOME_LON, RADIUS_MILES);
+
+  feedAll(parser, R"({"time": 1700000000, "states": null})");
+  feedAll(parser,
+          R"([["a835af","UAL123  ","United States",1699999999,1699999999,-122.2211,37.7213,1000.0,false,90.0,45.0,)"
+          R"(2.5,null,1050.0,"1200",false,0,0]])");
+
+  ASSERT_FALSE(parser.hasError());
+  EXPECT_EQ(parser.matchCount(), 0u);
+}
+
 TEST(OpenSkyStatesParser, EvictsFarthestWhenCloserAircraftArrivesAfterCapReached) {
   // First fill the array to exactly MAX_MATCHES with aircraft "a0".."a19" at
   // increasing distances (lat offsets 0.01 .. 0.20, farthest last). Once the

@@ -2,6 +2,7 @@
 
 #include <GfxRenderer.h>
 #include <I18n.h>
+#include <Logging.h>
 
 #include <cmath>
 #include <cstdio>
@@ -10,10 +11,8 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
-#include "activities/ActivityManager.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
-#include "fontIds.h"
 
 namespace {
 bool parseCoordinate(const std::string& text, double minValue, double maxValue, double& outValue) {
@@ -34,12 +33,18 @@ bool parseCoordinate(const std::string& text, double minValue, double maxValue, 
 void FlightTrackerSettingsActivity::onEnter() {
   Activity::onEnter();
   selectedIndex = 0;
+  errorMessage.clear();
   requestUpdate();
 }
 
 void FlightTrackerSettingsActivity::onExit() { Activity::onExit(); }
 
 void FlightTrackerSettingsActivity::loop() {
+  if (!errorMessage.empty() && millis() - errorShownAt >= ERROR_MESSAGE_DURATION_MS) {
+    errorMessage.clear();
+    requestUpdate();
+  }
+
   if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
     finish();
     return;
@@ -83,6 +88,8 @@ void FlightTrackerSettingsActivity::handleSelection() {
           strncpy(SETTINGS.flightTrackerHomeLat, kb.text.c_str(), sizeof(SETTINGS.flightTrackerHomeLat) - 1);
           SETTINGS.flightTrackerHomeLat[sizeof(SETTINGS.flightTrackerHomeLat) - 1] = '\0';
           SETTINGS.saveToFile();
+        } else {
+          rejectCoordinate(kb.text);
         }
       }
       requestUpdate();
@@ -103,6 +110,8 @@ void FlightTrackerSettingsActivity::handleSelection() {
           strncpy(SETTINGS.flightTrackerHomeLon, kb.text.c_str(), sizeof(SETTINGS.flightTrackerHomeLon) - 1);
           SETTINGS.flightTrackerHomeLon[sizeof(SETTINGS.flightTrackerHomeLon) - 1] = '\0';
           SETTINGS.saveToFile();
+        } else {
+          rejectCoordinate(kb.text);
         }
       }
       requestUpdate();
@@ -115,8 +124,12 @@ void FlightTrackerSettingsActivity::handleSelection() {
   }
 
   // Search radius: tap cycles through the allowed range. `next` is int (not
-  // uint8_t) so a persisted value already above MAX (e.g. from a hand-edited
-  // settings file) can't wrap through a narrowing add before the MAX check.
+  // uint8_t) purely as a defensive habit, not because it's load-bearing here:
+  // CrossPointSettings::fromJson() already clamps every SettingType::VALUE
+  // field -- including this one -- to [min,max] on load (see
+  // CrossPointSettings.cpp:159-164), so flightTrackerRadiusMiles can never
+  // actually reach this point above MAX. The int widening is harmless and
+  // guards against that invariant changing later.
   const int next = static_cast<int>(SETTINGS.flightTrackerRadiusMiles) + CrossPointSettings::FLIGHT_TRACKER_RADIUS_STEP;
   SETTINGS.flightTrackerRadiusMiles = next > CrossPointSettings::FLIGHT_TRACKER_RADIUS_MAX
                                           ? CrossPointSettings::FLIGHT_TRACKER_RADIUS_MIN
@@ -125,13 +138,20 @@ void FlightTrackerSettingsActivity::handleSelection() {
   requestUpdate();
 }
 
+void FlightTrackerSettingsActivity::rejectCoordinate(const std::string& text) {
+  errorMessage = tr(STR_INVALID_COORDINATE);
+  errorShownAt = millis();
+  LOG_ERR("FTS", "Rejected coordinate input: %s", text.c_str());
+}
+
 void FlightTrackerSettingsActivity::render(RenderLock&&) {
   renderer.clearScreen();
 
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
 
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_FLIGHT_TRACKER));
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_FLIGHT_TRACKER),
+                 errorMessage.empty() ? nullptr : errorMessage.c_str());
 
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const int contentHeight =

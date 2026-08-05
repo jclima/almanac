@@ -77,8 +77,6 @@ void OpenSkyStatesParser::commitRow() {
       safeCopy(m.callsign, sizeof(m.callsign), scratch.callsign, strlen(scratch.callsign));
       trimTrailingSpaces(m.callsign);
       safeCopy(m.originCountry, sizeof(m.originCountry), scratch.originCountry, strlen(scratch.originCountry));
-      m.latitude = scratch.lat;
-      m.longitude = scratch.lon;
 
       m.hasAltitudeFeet = scratch.hasGeoAlt || scratch.hasBaroAlt;
       const float altMeters = scratch.hasGeoAlt ? scratch.geoAltM : scratch.baroAltM;
@@ -155,6 +153,13 @@ void OpenSkyStatesParser::sOnArrayEnd(void* ctx) {
 
 void OpenSkyStatesParser::sOnString(void* ctx, const char* value, size_t len) {
   auto* self = static_cast<OpenSkyStatesParser*>(ctx);
+  if (self->position == Position::AWAITING_STATES) {
+    // A top-level "states" key whose value turns out to be a string (not an
+    // array) must not leave expectStatesArray set -- otherwise a later,
+    // unrelated top-level array could be mis-adopted as the states array.
+    self->expectStatesArray = false;
+    return;
+  }
   if (self->position != Position::IN_ROW || self->nestedArrayDepth > 0) return;
   switch (self->fieldIndex) {
     case 0:  // icao24
@@ -174,6 +179,13 @@ void OpenSkyStatesParser::sOnString(void* ctx, const char* value, size_t len) {
 
 void OpenSkyStatesParser::sOnNumber(void* ctx, const char* value, size_t len) {
   auto* self = static_cast<OpenSkyStatesParser*>(ctx);
+  if (self->position == Position::AWAITING_STATES) {
+    // A top-level "states" key whose value turns out to be a number (not an
+    // array) must not leave expectStatesArray set -- otherwise a later,
+    // unrelated top-level array could be mis-adopted as the states array.
+    self->expectStatesArray = false;
+    return;
+  }
   if (self->position != Position::IN_ROW || self->nestedArrayDepth > 0) return;
   switch (self->fieldIndex) {
     case 5:  // longitude
@@ -219,6 +231,13 @@ void OpenSkyStatesParser::sOnBool(void* ctx, bool value) {
 
 void OpenSkyStatesParser::sOnNull(void* ctx) {
   auto* self = static_cast<OpenSkyStatesParser*>(ctx);
+  if (self->position == Position::AWAITING_STATES) {
+    // A top-level "states" key whose value is null must not leave
+    // expectStatesArray set -- otherwise a later, unrelated top-level array
+    // could be mis-adopted as the states array.
+    self->expectStatesArray = false;
+    return;
+  }
   if (self->position != Position::IN_ROW || self->nestedArrayDepth > 0) return;
   // A null just means "field absent" -- the corresponding hasX flag in
   // scratch was already false from the row reset, so there's nothing to set.

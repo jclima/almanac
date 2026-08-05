@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 #include "activities/Activity.h"
 #include "util/ButtonNavigator.h"
 
@@ -17,9 +19,14 @@ class FlightTrackerSettingsActivity final : public Activity {
 
  private:
   static constexpr int ITEM_COUNT = 3;
+  // How long a rejected-input error stays on screen before loop() clears it.
+  static constexpr unsigned long ERROR_MESSAGE_DURATION_MS = 3000;
 
   ButtonNavigator buttonNavigator;
   int selectedIndex = 0;
+  std::string errorMessage;
+  unsigned long errorShownAt = 0;
 
   void handleSelection();
+  void rejectCoordinate(const std::string& text);
 };

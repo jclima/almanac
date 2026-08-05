@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <GfxRenderer.h>
 #include <I18n.h>
+#include <Logging.h>
 #include <WiFi.h>
 
 #include <cmath>
@@ -12,12 +13,12 @@
 #include "CrossPointSettings.h"
 #include "GeoMath.h"
 #include "MappedInputManager.h"
-#include "OpenSkyClient.h"
 #include "SilentRestart.h"
 #include "activities/ActivityManager.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "network/OpenSkyClient.h"
 
 bool NearbyFlightsActivity::parseHomeLocation(double& lat, double& lon) const {
   if (SETTINGS.flightTrackerHomeLat[0] == '\0' || SETTINGS.flightTrackerHomeLon[0] == '\0') return false;
@@ -58,8 +59,8 @@ void NearbyFlightsActivity::onEnter() {
 void NearbyFlightsActivity::onExit() {
   Activity::onExit();
   if (WiFi.getMode() != WIFI_MODE_NULL) {
-    // Leave WiFi up; the silent reboot below tears it down without
-    // fragmenting the heap -- same pattern OpdsBookBrowserActivity uses.
+    // Disconnect, then silently reboot to tear WiFi down without fragmenting
+    // the heap -- same pattern OpdsBookBrowserActivity uses.
     WiFi.disconnect(false);
     delay(30);
     silentRestart();
@@ -85,6 +86,7 @@ void NearbyFlightsActivity::onWifiSelectionComplete(const bool connected) {
   if (connected) {
     fetchFlights();
   } else {
+    // Leave WiFi up; onExit's silent reboot handles teardown without fragmenting.
     state = FlightsState::ERROR;
     errorMessage = tr(STR_WIFI_CONN_FAILED);
     requestUpdate();
@@ -106,7 +108,17 @@ void NearbyFlightsActivity::fetchFlights() {
   const double radius = SETTINGS.flightTrackerRadiusMiles;
   parser.reset(lat, lon, radius);
 
-  if (!OpenSkyClient::fetchNearby(lat, lon, radius, parser) || parser.hasError()) {
+  // Checked and logged separately (rather than one combined condition) so the
+  // console can tell a transport failure (DNS/TLS/HTTP) apart from a JSON
+  // parse failure -- otherwise both collapse into the same silent blank spot.
+  const bool fetchOk = OpenSkyClient::fetchNearby(lat, lon, radius, parser);
+  if (!fetchOk) {
+    LOG_ERR("FLIGHTS", "OpenSkyClient::fetchNearby transport failure");
+  }
+  if (parser.hasError()) {
+    LOG_ERR("FLIGHTS", "OpenSkyStatesParser reported a JSON parse error");
+  }
+  if (!fetchOk || parser.hasError()) {
     state = FlightsState::ERROR;
     errorMessage = tr(STR_FETCH_FLIGHTS_FAILED);
     requestUpdate();
@@ -116,6 +128,7 @@ void NearbyFlightsActivity::fetchFlights() {
   fetchCompletedMs = millis();
   selectedIndex = 0;
   state = FlightsState::LIST;
+  LOG_DBG("FLIGHTS", "Fetched %u matching aircraft", static_cast<unsigned>(parser.matchCount()));
   requestUpdate();
 }
 
@@ -138,13 +151,16 @@ void NearbyFlightsActivity::loop() {
       }
       return;
 
-    case FlightsState::ERROR:
-      if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    case FlightsState::ERROR: {
+      int tx = 0;
+      int ty = 0;
+      if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) || mappedInput.wasScreenTapped(tx, ty)) {
         checkAndConnectWifi();
       } else if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
         onGoHome(HomeMenuItem::NEARBY_FLIGHTS);
       }
       return;
+    }
 
     case FlightsState::DETAIL:
       if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
@@ -310,51 +326,51 @@ void NearbyFlightsActivity::renderDetail() const {
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight},
                  m.callsign[0] ? m.callsign : tr(STR_UNKNOWN_CALLSIGN));
 
-  int y = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing + 30;
-  constexpr int LINE_HEIGHT = 28;
+  const int x = metrics.contentSidePadding;
+  int y = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing + metrics.listRowHeight;
   char line[64];
 
   if (m.hasAltitudeFeet) {
     snprintf(line, sizeof(line), tr(STR_FLIGHT_ALTITUDE_FORMAT), static_cast<long>(m.altitudeFeet));
-    renderer.drawText(UI_10_FONT_ID, 20, y, line, true);
-    y += LINE_HEIGHT;
+    renderer.drawText(UI_10_FONT_ID, x, y, line, true);
+    y += metrics.listRowHeight;
   }
   if (m.hasSpeedMph) {
     snprintf(line, sizeof(line), tr(STR_FLIGHT_SPEED_FORMAT), static_cast<long>(m.speedMph));
-    renderer.drawText(UI_10_FONT_ID, 20, y, line, true);
-    y += LINE_HEIGHT;
+    renderer.drawText(UI_10_FONT_ID, x, y, line, true);
+    y += metrics.listRowHeight;
   }
   if (m.hasHeading) {
     snprintf(line, sizeof(line), tr(STR_FLIGHT_HEADING_FORMAT), static_cast<long>(m.headingDeg),
              GeoMath::compassPoint(m.headingDeg));
-    renderer.drawText(UI_10_FONT_ID, 20, y, line, true);
-    y += LINE_HEIGHT;
+    renderer.drawText(UI_10_FONT_ID, x, y, line, true);
+    y += metrics.listRowHeight;
   }
   if (m.hasVerticalRate) {
     const char* rateLabel = m.verticalRateMs > 0.5f    ? tr(STR_FLIGHT_CLIMBING)
                             : m.verticalRateMs < -0.5f ? tr(STR_FLIGHT_DESCENDING)
                                                         : tr(STR_FLIGHT_LEVEL);
-    renderer.drawText(UI_10_FONT_ID, 20, y, rateLabel, true);
-    y += LINE_HEIGHT;
+    renderer.drawText(UI_10_FONT_ID, x, y, rateLabel, true);
+    y += metrics.listRowHeight;
   }
 
   snprintf(line, sizeof(line), tr(STR_FLIGHT_DISTANCE_FORMAT), m.distanceMiles, GeoMath::compassPoint(m.bearingDeg));
-  renderer.drawText(UI_10_FONT_ID, 20, y, line, true);
-  y += LINE_HEIGHT;
+  renderer.drawText(UI_10_FONT_ID, x, y, line, true);
+  y += metrics.listRowHeight;
 
   if (m.originCountry[0]) {
     snprintf(line, sizeof(line), tr(STR_FLIGHT_ORIGIN_FORMAT), m.originCountry);
-    renderer.drawText(UI_10_FONT_ID, 20, y, line, true);
-    y += LINE_HEIGHT;
+    renderer.drawText(UI_10_FONT_ID, x, y, line, true);
+    y += metrics.listRowHeight;
   }
 
   snprintf(line, sizeof(line), tr(STR_FLIGHT_ICAO24_FORMAT), m.icao24);
-  renderer.drawText(UI_10_FONT_ID, 20, y, line, true);
-  y += LINE_HEIGHT;
+  renderer.drawText(UI_10_FONT_ID, x, y, line, true);
+  y += metrics.listRowHeight;
 
   const unsigned long ageSeconds = (millis() - fetchCompletedMs) / 1000;
   snprintf(line, sizeof(line), tr(STR_FLIGHT_DATA_AGE_FORMAT), ageSeconds);
-  renderer.drawText(UI_10_FONT_ID, 20, y, line, true);
+  renderer.drawText(UI_10_FONT_ID, x, y, line, true);
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
