@@ -567,73 +567,149 @@ void NearbyFlightsActivity::renderDetail() const {
                  m.callsign[0] ? m.callsign : tr(STR_UNKNOWN_CALLSIGN));
 
   const int x = metrics.contentSidePadding;
-  int y = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing + metrics.listRowHeight;
+  const int firstLineY = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing + metrics.listRowHeight;
+
+  // Highest y at which a full row still clears the button-hints strip
+  // reserved at the bottom of the screen. Without this guard, the tightest
+  // theme+orientation combo (Lyra, landscape -- getScreenHeight() returns
+  // the 480px panelHeight there, see GfxRenderer.cpp's Landscape cases) can
+  // push a fully-populated detail screen (up to 10 lines) tens of pixels
+  // past the physical bottom. That is worse than merely invisible text:
+  // GfxRenderer::drawPixel bounds-checks and logs LOG_ERR("GFX", "!!
+  // Outside range ...") once PER out-of-range pixel, so an off-screen text
+  // row floods the serial log rather than silently failing to draw.
+  const int maxY = renderer.getScreenHeight() - metrics.buttonHintsHeight - metrics.listRowHeight;
+
+  const auto& acInfo = aircraftParser.info();
+  // A "found" record with every field empty (adsbdb has the aircraft object
+  // but no useful data in it) is informationally the same as no record --
+  // render it the same way rather than silently skipping the block.
+  const bool acInfoAllEmpty = !acInfo.manufacturer[0] && !acInfo.icaoType[0] && !acInfo.registration[0];
+  const bool showStatusLine = aircraftLookupFailed || !acInfo.found || acInfoAllEmpty;
+  const bool showTypeLine = !showStatusLine && (acInfo.manufacturer[0] || acInfo.icaoType[0]);
+  const bool showRegLine = !showStatusLine && acInfo.registration[0];
+
+  // Fields the screen could show, keyed by identity rather than draw order,
+  // so priority (below) and visual layout (further below) can differ.
+  enum DetailField : uint8_t {
+    kAltitude,
+    kType,
+    kDistance,
+    kHeading,
+    kRegistration,
+    kSpeed,
+    kOrigin,
+    kIcao24,
+    kVerticalRate,
+    kDataAge,
+    kFieldCount
+  };
+
+  bool present[kFieldCount] = {};
+  present[kAltitude] = m.hasAltitudeFeet;
+  present[kType] = showStatusLine || showTypeLine;  // the status message occupies this slot when there's no type text
+  present[kDistance] = true;
+  present[kHeading] = m.hasHeading;
+  present[kRegistration] = showRegLine;
+  present[kSpeed] = m.hasSpeedMph;
+  present[kOrigin] = m.originCountry[0] != '\0';
+  present[kIcao24] = true;
+  present[kVerticalRate] = m.hasVerticalRate;
+  present[kDataAge] = true;
+
+  // Which present fields survive if the screen can't fit them all, highest
+  // priority first. Altitude and aircraft type/registration are this
+  // screen's reason for existing -- kept longest. Data age is a pure
+  // freshness indicator and the least harmful to drop, so it goes last,
+  // just after the technical ICAO24 identifier and the vertical-rate
+  // refinement of altitude. Distance/heading/speed/origin sit in between,
+  // roughly in order of how much they help identify and place the aircraft.
+  static constexpr DetailField PRIORITY_ORDER[kFieldCount] = {
+      kAltitude, kType, kDistance, kHeading, kRegistration, kSpeed, kOrigin, kIcao24, kVerticalRate, kDataAge,
+  };
+
+  // Pass 1: decide which present fields fit, in priority order. Every line
+  // is the same height, so this depends only on how many higher-priority
+  // present fields came before it, not on any field's actual text --
+  // nothing needs formatting yet.
+  bool included[kFieldCount] = {};
+  {
+    int simulatedY = firstLineY;
+    for (const DetailField f : PRIORITY_ORDER) {
+      if (!present[f]) continue;
+      if (simulatedY > maxY) break;  // this and every lower-priority field after it won't fit either
+      included[f] = true;
+      simulatedY += metrics.listRowHeight;
+    }
+  }
+
+  // Pass 2: draw whatever was included, in the screen's normal reading
+  // order, formatting into one reused buffer -- same footprint as before
+  // truncation existed. In the overwhelming majority of cases (any theme in
+  // portrait, or landscape without every optional field populated at once)
+  // every field is included and this renders exactly as it always has.
+  int y = firstLineY;
   char line[64];
 
-  if (m.hasAltitudeFeet) {
+  if (included[kAltitude]) {
     snprintf(line, sizeof(line), tr(STR_FLIGHT_ALTITUDE_FORMAT), static_cast<long>(m.altitudeFeet));
     renderer.drawText(UI_10_FONT_ID, x, y, line, true);
     y += metrics.listRowHeight;
   }
-  if (m.hasSpeedMph) {
+  if (included[kSpeed]) {
     snprintf(line, sizeof(line), tr(STR_FLIGHT_SPEED_FORMAT), static_cast<long>(m.speedMph));
     renderer.drawText(UI_10_FONT_ID, x, y, line, true);
     y += metrics.listRowHeight;
   }
-  if (m.hasHeading) {
+  if (included[kHeading]) {
     snprintf(line, sizeof(line), tr(STR_FLIGHT_HEADING_FORMAT), static_cast<long>(m.headingDeg),
              GeoMath::compassPoint(m.headingDeg));
     renderer.drawText(UI_10_FONT_ID, x, y, line, true);
     y += metrics.listRowHeight;
   }
-  if (m.hasVerticalRate) {
+  if (included[kVerticalRate]) {
     const char* rateLabel = m.verticalRateMs > 0.5f    ? tr(STR_FLIGHT_CLIMBING)
                             : m.verticalRateMs < -0.5f ? tr(STR_FLIGHT_DESCENDING)
                                                         : tr(STR_FLIGHT_LEVEL);
     renderer.drawText(UI_10_FONT_ID, x, y, rateLabel, true);
     y += metrics.listRowHeight;
   }
-
-  snprintf(line, sizeof(line), tr(STR_FLIGHT_DISTANCE_FORMAT), m.distanceMiles, GeoMath::compassPoint(m.bearingDeg));
-  renderer.drawText(UI_10_FONT_ID, x, y, line, true);
-  y += metrics.listRowHeight;
-
-  if (m.originCountry[0]) {
+  if (included[kDistance]) {
+    snprintf(line, sizeof(line), tr(STR_FLIGHT_DISTANCE_FORMAT), m.distanceMiles, GeoMath::compassPoint(m.bearingDeg));
+    renderer.drawText(UI_10_FONT_ID, x, y, line, true);
+    y += metrics.listRowHeight;
+  }
+  if (included[kOrigin]) {
     snprintf(line, sizeof(line), tr(STR_FLIGHT_ORIGIN_FORMAT), m.originCountry);
     renderer.drawText(UI_10_FONT_ID, x, y, line, true);
     y += metrics.listRowHeight;
   }
-
-  snprintf(line, sizeof(line), tr(STR_FLIGHT_ICAO24_FORMAT), m.icao24);
-  renderer.drawText(UI_10_FONT_ID, x, y, line, true);
-  y += metrics.listRowHeight;
-
-  const auto& acInfo = aircraftParser.info();
-  if (aircraftLookupFailed) {
-    renderer.drawText(UI_10_FONT_ID, x, y, tr(STR_AIRCRAFT_TYPE_UNAVAILABLE), true);
+  if (included[kIcao24]) {
+    snprintf(line, sizeof(line), tr(STR_FLIGHT_ICAO24_FORMAT), m.icao24);
+    renderer.drawText(UI_10_FONT_ID, x, y, line, true);
     y += metrics.listRowHeight;
-  } else if (!acInfo.found || (!acInfo.manufacturer[0] && !acInfo.icaoType[0] && !acInfo.registration[0])) {
-    // A "found" record with every field empty (adsbdb has the aircraft object
-    // but no useful data in it) is informationally the same as no record --
-    // render it the same way rather than silently skipping the block.
-    renderer.drawText(UI_10_FONT_ID, x, y, tr(STR_AIRCRAFT_TYPE_UNKNOWN), true);
-    y += metrics.listRowHeight;
-  } else {
-    if (acInfo.manufacturer[0] || acInfo.icaoType[0]) {
+  }
+  if (included[kType]) {
+    if (showStatusLine) {
+      const char* statusText = aircraftLookupFailed ? tr(STR_AIRCRAFT_TYPE_UNAVAILABLE) : tr(STR_AIRCRAFT_TYPE_UNKNOWN);
+      renderer.drawText(UI_10_FONT_ID, x, y, statusText, true);
+    } else {
       snprintf(line, sizeof(line), tr(STR_AIRCRAFT_TYPE_FORMAT), acInfo.manufacturer, acInfo.icaoType);
       renderer.drawText(UI_10_FONT_ID, x, y, line, true);
-      y += metrics.listRowHeight;
     }
-    if (acInfo.registration[0]) {
-      snprintf(line, sizeof(line), tr(STR_AIRCRAFT_REG_FORMAT), acInfo.registration);
-      renderer.drawText(UI_10_FONT_ID, x, y, line, true);
-      y += metrics.listRowHeight;
-    }
+    y += metrics.listRowHeight;
   }
-
-  const unsigned long ageSeconds = (millis() - fetchCompletedMs) / 1000;
-  snprintf(line, sizeof(line), tr(STR_FLIGHT_DATA_AGE_FORMAT), ageSeconds);
-  renderer.drawText(UI_10_FONT_ID, x, y, line, true);
+  if (included[kRegistration]) {
+    snprintf(line, sizeof(line), tr(STR_AIRCRAFT_REG_FORMAT), acInfo.registration);
+    renderer.drawText(UI_10_FONT_ID, x, y, line, true);
+    y += metrics.listRowHeight;
+  }
+  if (included[kDataAge]) {
+    const unsigned long ageSeconds = (millis() - fetchCompletedMs) / 1000;
+    snprintf(line, sizeof(line), tr(STR_FLIGHT_DATA_AGE_FORMAT), ageSeconds);
+    renderer.drawText(UI_10_FONT_ID, x, y, line, true);
+    y += metrics.listRowHeight;
+  }
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
