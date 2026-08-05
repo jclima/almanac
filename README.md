@@ -1,5 +1,19 @@
 # CrossPoint Reader
 
+> ### 🛩️ This is a personal fork
+>
+> A fork of [crosspoint-reader/crosspoint-reader](https://github.com/crosspoint-reader/crosspoint-reader)
+> that adds a **Nearby Flights** screen: it fetches aircraft near a configured home
+> location from [OpenSky Network](https://opensky-network.org)'s free anonymous API and
+> shows them as a distance-sorted list with a per-flight detail view. Built for the Xteink X4.
+>
+> Upstream's [SCOPE.md](./SCOPE.md) rules out new network connectors and background
+> connectivity, so this feature is **not intended for upstream contribution** — it lives
+> here only. It still follows upstream's engineering constraints: user-initiated fetches
+> only (no background polling), and bounded memory regardless of how busy the airspace is.
+>
+> Everything below is upstream's documentation and applies unchanged.
+
 [![Fund contributors](https://img.shields.io/badge/%F0%9F%91%91_Fund_contributors-royalty.dev-BB953A?style=for-the-badge&labelColor=1a1a1a)](https://app.royalty.dev/crosspoint-reader/crosspoint-reader)
 
 CrossPoint is open-source e-reader firmware - community-built, fully hackable, free forever. It's maintained by a growing community of developers and readers who believe your device should do what you want - not what a manufacturer decided for you.
