@@ -120,83 +120,85 @@ void NearbyFlightsActivity::fetchFlights() {
 }
 
 void NearbyFlightsActivity::loop() {
-  if (state == FlightsState::WIFI_SELECTION) return;
+  switch (state) {
+    case FlightsState::WIFI_SELECTION:
+      return;  // WifiSelectionActivity owns input while pushed
 
-  if (state == FlightsState::NO_LOCATION) {
-    if (mappedInput.wasReleased(MappedInputManager::Button::Back) ||
-        mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-      onGoHome(HomeMenuItem::NEARBY_FLIGHTS);
-    }
-    return;
-  }
+    case FlightsState::NO_LOCATION:
+      if (mappedInput.wasReleased(MappedInputManager::Button::Back) ||
+          mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+        onGoHome(HomeMenuItem::NEARBY_FLIGHTS);
+      }
+      return;
 
-  if (state == FlightsState::CHECK_WIFI || state == FlightsState::LOADING) {
-    if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-      onGoHome(HomeMenuItem::NEARBY_FLIGHTS);
-    }
-    return;
-  }
+    case FlightsState::CHECK_WIFI:
+    case FlightsState::LOADING:
+      if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+        onGoHome(HomeMenuItem::NEARBY_FLIGHTS);
+      }
+      return;
 
-  if (state == FlightsState::ERROR) {
-    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-      checkAndConnectWifi();
-    } else if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-      onGoHome(HomeMenuItem::NEARBY_FLIGHTS);
-    }
-    return;
-  }
+    case FlightsState::ERROR:
+      if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+        checkAndConnectWifi();
+      } else if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+        onGoHome(HomeMenuItem::NEARBY_FLIGHTS);
+      }
+      return;
 
-  if (state == FlightsState::DETAIL) {
-    if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-      state = FlightsState::LIST;
-      requestUpdate();
-    }
-    return;
-  }
-
-  // LIST
-  const auto matchCount = static_cast<int>(parser.matchCount());
-
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-    onGoHome(HomeMenuItem::NEARBY_FLIGHTS);
-    return;
-  }
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-    if (matchCount > 0) {
-      state = FlightsState::DETAIL;
-      requestUpdate();
-    }
-    return;
-  }
-  if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
-    checkAndConnectWifi();  // "Refresh" -- re-enters LOADING
-    return;
-  }
-
-  if (matchCount > 0) {
-    const auto& metrics = UITheme::getInstance().getMetrics();
-    const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
-    const int contentHeight =
-        renderer.getScreenHeight() - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing * 2;
-    switch (handleListTouch(selectedIndex, matchCount, contentTop, contentHeight, true)) {
-      case ListTouchResult::Activated:
-        state = FlightsState::DETAIL;
+    case FlightsState::DETAIL:
+      if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+        state = FlightsState::LIST;
         requestUpdate();
-        return;
-      case ListTouchResult::Consumed:
-        return;
-      case ListTouchResult::None:
-        break;
-    }
+      }
+      return;
 
-    buttonNavigator.onNextRelease([this, matchCount] {
-      selectedIndex = ButtonNavigator::nextIndex(selectedIndex, matchCount);
-      requestUpdate();
-    });
-    buttonNavigator.onPreviousRelease([this, matchCount] {
-      selectedIndex = ButtonNavigator::previousIndex(selectedIndex, matchCount);
-      requestUpdate();
-    });
+    case FlightsState::LIST: {
+      const auto matchCount = static_cast<int>(parser.matchCount());
+
+      if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+        onGoHome(HomeMenuItem::NEARBY_FLIGHTS);
+        return;
+      }
+      if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+        if (matchCount > 0) {
+          state = FlightsState::DETAIL;
+          requestUpdate();
+        }
+        return;
+      }
+      if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
+        checkAndConnectWifi();  // "Refresh" -- re-enters LOADING
+        return;
+      }
+
+      if (matchCount > 0) {
+        const auto& metrics = UITheme::getInstance().getMetrics();
+        const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
+        const int contentHeight =
+            renderer.getScreenHeight() - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing * 2;
+        switch (handleListTouch(selectedIndex, matchCount, contentTop, contentHeight, true)) {
+          case ListTouchResult::Activated:
+            state = FlightsState::DETAIL;
+            requestUpdate();
+            return;
+          case ListTouchResult::Consumed:
+            return;
+          case ListTouchResult::None:
+            break;
+        }
+
+        buttonNavigator.onNextRelease([this, matchCount] {
+          selectedIndex = ButtonNavigator::nextIndex(selectedIndex, matchCount);
+          requestUpdate();
+        });
+        buttonNavigator.onPreviousRelease([this, matchCount] {
+          selectedIndex = ButtonNavigator::previousIndex(selectedIndex, matchCount);
+          requestUpdate();
+        });
+      }
+      return;
+    }
   }
 }
 
@@ -289,7 +291,7 @@ void NearbyFlightsActivity::renderList() {
           const auto& m = parser.matchAt(static_cast<size_t>(index));
           if (!m.hasAltitudeFeet) return std::string();
           char buf[16];
-          snprintf(buf, sizeof(buf), "%ld ft", static_cast<long>(m.altitudeFeet));
+          snprintf(buf, sizeof(buf), tr(STR_FLIGHT_ALTITUDE_SHORT_FORMAT), static_cast<long>(m.altitudeFeet));
           return std::string(buf);
         });
   }
