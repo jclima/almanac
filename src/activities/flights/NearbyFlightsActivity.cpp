@@ -612,7 +612,10 @@ void NearbyFlightsActivity::renderDetail() const {
   if (aircraftLookupFailed) {
     renderer.drawText(UI_10_FONT_ID, x, y, tr(STR_AIRCRAFT_TYPE_UNAVAILABLE), true);
     y += metrics.listRowHeight;
-  } else if (!acInfo.found) {
+  } else if (!acInfo.found || (!acInfo.manufacturer[0] && !acInfo.icaoType[0] && !acInfo.registration[0])) {
+    // A "found" record with every field empty (adsbdb has the aircraft object
+    // but no useful data in it) is informationally the same as no record --
+    // render it the same way rather than silently skipping the block.
     renderer.drawText(UI_10_FONT_ID, x, y, tr(STR_AIRCRAFT_TYPE_UNKNOWN), true);
     y += metrics.listRowHeight;
   } else {
