@@ -7,7 +7,6 @@
 
 // One aircraft's registry record, as returned by adsbdb.com.
 struct AircraftInfo {
-  char icao24[7] = {0};
   char manufacturer[24] = {0};
   char icaoType[8] = {0};       // clean 4-char ICAO designator, e.g. "B739"
   char registration[12] = {0};  // tail number, e.g. "N251AK"
@@ -21,7 +20,13 @@ struct AircraftInfo {
 // from an object to a string. A missing record sets found=false and is NOT an
 // error; only malformed JSON sets hasError().
 //
-// Fixed-size buffers throughout: no allocation, ~54 bytes of state.
+// Fixed-size buffers throughout: no allocation -- but not tiny.
+// sizeof(AircraftInfoParser) measures 704 bytes on a 64-bit host (a few
+// bytes less on the 32-bit device, where size_t is smaller) -- call it
+// ~700 bytes either way. It's dominated by the embedded StreamingJsonParser
+// (a 512-byte token buffer plus a 32-byte nesting stack, ~550+ bytes on its
+// own); this class's own fields (AircraftInfo result + a few bytes of
+// parse-position state) account for only ~50 of the total.
 class AircraftInfoParser {
  public:
   AircraftInfoParser();

@@ -53,6 +53,12 @@ class NearbyFlightsActivity final : public Activity {
   // back-and-forth and the bookkeeping for more is not earned.
   AircraftInfoParser aircraftParser;
   char aircraftInfoIcao24[7] = {0};  // which icao24 aircraftParser currently holds
+  // True only for a transport failure or a JSON parse error -- NOT for a
+  // NotFound (adsbdb HTTP 404, "no record"), which is a normal outcome and
+  // caches like a success. ensureAircraftInfo()'s cache-hit guard checks this
+  // alongside aircraftInfoIcao24 so a failed lookup is retried on the next
+  // DETAIL visit instead of pinning "unavailable" for the activity's
+  // lifetime.
   bool aircraftLookupFailed = false;
 
   // Long-press Confirm = Refresh, short press = select/detail. getHeldTime()

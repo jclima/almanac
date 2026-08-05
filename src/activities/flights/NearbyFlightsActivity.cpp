@@ -174,6 +174,11 @@ bool NearbyFlightsActivity::handleConfirmPressOrRefresh(const bool hasMatches) {
     if (wasShortPress && hasMatches) {
       detailReturnState = state;  // remember LIST vs RADAR so Back returns here
       state = FlightsState::DETAIL;
+      // Paint the (possibly pending) detail screen before the blocking
+      // lookup below, so the prior LIST/RADAR frame doesn't stay frozen on
+      // screen for the whole fetch -- immediate notify, same pattern as
+      // fetchFlights()'s LOADING screen.
+      requestUpdate(true);
       ensureAircraftInfo();
       requestUpdate();
     }
@@ -258,6 +263,9 @@ void NearbyFlightsActivity::loop() {
           case ListTouchResult::Activated:
             detailReturnState = FlightsState::LIST;  // touch activation only exists in LIST
             state = FlightsState::DETAIL;
+            // See the matching comment in handleConfirmPressOrRefresh: paint
+            // the pending detail screen before the blocking lookup.
+            requestUpdate(true);
             ensureAircraftInfo();
             requestUpdate();
             return;
@@ -441,11 +449,22 @@ void NearbyFlightsActivity::renderRadar() {
     return;
   }
 
+  // Aircraft glyph sizes -- used both for the markers drawn below and here,
+  // to budget the plot margin so the selected-aircraft ring (radius
+  // SELECTED_RING_RADIUS, drawn around the marker) never clips against the
+  // content edge. contentSidePadding (20) alone is smaller than
+  // SELECTED_RING_RADIUS (22): a selected aircraft plotted at full range due
+  // E/W would otherwise clip its ring by a couple of pixels in portrait.
+  static constexpr int MARK_SIZE = 11;
+  static constexpr int SELECTED_MARK_SIZE = 15;
+  static constexpr int SELECTED_RING_RADIUS = SELECTED_MARK_SIZE + 7;
+
   const int cx = pageWidth / 2;
   const int cy = contentTop + plotHeight / 2;
   // Fit the circle to whichever axis is tighter, so landscape orientations
   // shrink the plot instead of clipping it.
-  const int radiusPx = std::min(pageWidth / 2, plotHeight / 2) - metrics.contentSidePadding;
+  const int plotMargin = std::max(metrics.contentSidePadding, SELECTED_RING_RADIUS);
+  const int radiusPx = std::min(pageWidth / 2, plotHeight / 2) - plotMargin;
 
   // Range rings. drawArc renders ONE QUADRANT per call, selected by the
   // xDir/yDir signs: (-1,-1) top-left, (1,-1) top-right, (1,1) bottom-right,
@@ -483,8 +502,6 @@ void NearbyFlightsActivity::renderRadar() {
   // block rather than fragmenting -- and radar frames only render on user
   // input, never continuously. Accepted deliberately; revisit if heap
   // instrumentation shows otherwise.
-  static constexpr int MARK_SIZE = 11;
-  static constexpr int SELECTED_MARK_SIZE = 15;
   for (int i = 0; i < matchCount; ++i) {
     const auto& m = parser.matchAt(static_cast<size_t>(i));
     const auto p = GeoMath::polarToScreen(m.distanceMiles, m.bearingDeg, maxRange, cx, cy, radiusPx);
@@ -498,7 +515,7 @@ void NearbyFlightsActivity::renderRadar() {
     renderer.fillPolygon(xs, ys, 4, true);
 
     if (isSelected) {
-      drawCircle(renderer, SELECTED_MARK_SIZE + 7, p.x, p.y, 1);
+      drawCircle(renderer, SELECTED_RING_RADIUS, p.x, p.y, 1);
     }
   }
 
@@ -528,33 +545,64 @@ void NearbyFlightsActivity::ensureAircraftInfo() {
   if (parser.matchCount() == 0) return;
   const auto& m = parser.matchAt(static_cast<size_t>(selectedIndex));
 
-  // Already cached for this aircraft. An empty icao24 is its own cache key:
-  // there is nothing to look up, but the reset below still must happen so a
-  // match with no icao24 doesn't inherit a *different* aircraft's stale
-  // result left over in aircraftParser from a previous DETAIL visit.
-  if (strcmp(aircraftInfoIcao24, m.icao24) == 0) return;
+  // Already cached for this aircraft AND that earlier lookup didn't fail.
+  // A failed lookup must be retried on the next visit rather than pinning
+  // "unavailable" for the rest of the activity's lifetime, so it deliberately
+  // does NOT short-circuit here -- see the aircraftLookupFailed comment on
+  // the member. A NotFound (no adsbdb record) is not a failure and DOES
+  // short-circuit, same as a successful lookup.
+  //
+  // An empty icao24 is its own cache key: there is nothing to look up, but
+  // the reset below still must happen so a match with no icao24 doesn't
+  // inherit a *different* aircraft's stale result left over in
+  // aircraftParser from a previous DETAIL visit.
+  if (!aircraftLookupFailed && strcmp(aircraftInfoIcao24, m.icao24) == 0) return;
 
   aircraftParser.reset();
   aircraftLookupFailed = false;
-  strncpy(aircraftInfoIcao24, m.icao24, sizeof(aircraftInfoIcao24) - 1);
-  aircraftInfoIcao24[sizeof(aircraftInfoIcao24) - 1] = '\0';
 
-  if (m.icao24[0] == '\0') return;  // nothing to look up; renders as "Type: unknown"
+  if (m.icao24[0] == '\0') {
+    aircraftInfoIcao24[0] = '\0';  // nothing to look up; renders as "Type: unknown"
+    return;
+  }
 
+  // aircraftInfoIcao24 is deliberately NOT updated yet -- it still names
+  // whatever aircraft was cached before, so renderDetail()'s infoPending
+  // check (aircraftInfoIcao24 != m.icao24) stays true for the whole blocking
+  // call below, no matter when the render task happens to run relative to
+  // this one (ActivityManagerRender and the Arduino loop task share the same
+  // FreeRTOS priority, so there's no ordering guarantee between the
+  // requestUpdate(true) at the DETAIL-entry call sites and this function
+  // actually running). Writing the key here first would let a render task
+  // that runs between this line and the fetch returning see a "matching"
+  // key pointing at a freshly-reset (empty) aircraftParser, i.e. render
+  // "Type: unknown" instead of "Type: checking..." for a lookup that hasn't
+  // even started yet.
+  //
   // Logged separately so the console distinguishes a transport failure from a
   // JSON parse failure -- both otherwise render the same on screen.
-  const bool ok = AdsbdbClient::fetchAircraftInfo(m.icao24, aircraftParser);
-  if (!ok) {
+  const AdsbdbClient::Result result = AdsbdbClient::fetchAircraftInfo(m.icao24, aircraftParser);
+  if (result == AdsbdbClient::Result::Error) {
     LOG_ERR("FLIGHTS", "AdsbdbClient::fetchAircraftInfo transport failure for %s", m.icao24);
   }
   if (aircraftParser.hasError()) {
     LOG_ERR("FLIGHTS", "AircraftInfoParser reported a JSON parse error for %s", m.icao24);
   }
-  aircraftLookupFailed = !ok || aircraftParser.hasError();
+  // A 404 (Result::NotFound) is adsbdb's normal "no record" answer, not a
+  // failure -- it renders as STR_AIRCRAFT_TYPE_UNKNOWN via the same
+  // acInfo.found == false path as a JSON-level miss, and (per the guard
+  // above) stays cached like a success. Only a transport failure or a JSON
+  // parse error counts as aircraftLookupFailed.
+  aircraftLookupFailed = result == AdsbdbClient::Result::Error || aircraftParser.hasError();
   if (!aircraftLookupFailed) {
     LOG_DBG("FLIGHTS", "Aircraft %s: found=%d type=%s", m.icao24, aircraftParser.info().found ? 1 : 0,
             aircraftParser.info().icaoType);
   }
+  // Recorded only now that the attempt has completed (success, NotFound, or
+  // Error -- see the M3 retry-on-failure note on the guard above and on the
+  // aircraftLookupFailed member).
+  strncpy(aircraftInfoIcao24, m.icao24, sizeof(aircraftInfoIcao24) - 1);
+  aircraftInfoIcao24[sizeof(aircraftInfoIcao24) - 1] = '\0';
 }
 
 void NearbyFlightsActivity::renderDetail() const {
@@ -580,12 +628,21 @@ void NearbyFlightsActivity::renderDetail() const {
   // row floods the serial log rather than silently failing to draw.
   const int maxY = renderer.getScreenHeight() - metrics.buttonHintsHeight - metrics.listRowHeight;
 
+  // DETAIL is now painted once *before* ensureAircraftInfo()'s blocking
+  // lookup runs (see the two DETAIL-entry call sites), so this render can
+  // land on the frame where the lookup for THIS aircraft hasn't happened
+  // yet. aircraftInfoIcao24 is the cache key aircraftParser/
+  // aircraftLookupFailed actually describe (see ensureAircraftInfo); if it
+  // doesn't match the currently-selected aircraft, that data belongs to
+  // whatever aircraft was cached before (or is empty) and must not be shown
+  // as this aircraft's result.
+  const bool infoPending = strcmp(aircraftInfoIcao24, m.icao24) != 0;
   const auto& acInfo = aircraftParser.info();
   // A "found" record with every field empty (adsbdb has the aircraft object
   // but no useful data in it) is informationally the same as no record --
   // render it the same way rather than silently skipping the block.
   const bool acInfoAllEmpty = !acInfo.manufacturer[0] && !acInfo.icaoType[0] && !acInfo.registration[0];
-  const bool showStatusLine = aircraftLookupFailed || !acInfo.found || acInfoAllEmpty;
+  const bool showStatusLine = infoPending || aircraftLookupFailed || !acInfo.found || acInfoAllEmpty;
   const bool showTypeLine = !showStatusLine && (acInfo.manufacturer[0] || acInfo.icaoType[0]);
   const bool showRegLine = !showStatusLine && acInfo.registration[0];
 
@@ -691,7 +748,18 @@ void NearbyFlightsActivity::renderDetail() const {
   }
   if (included[kType]) {
     if (showStatusLine) {
-      const char* statusText = aircraftLookupFailed ? tr(STR_AIRCRAFT_TYPE_UNAVAILABLE) : tr(STR_AIRCRAFT_TYPE_UNKNOWN);
+      // infoPending checked first: the lookup for THIS aircraft hasn't run
+      // yet on this frame (see the comment above showStatusLine), so
+      // aircraftLookupFailed still reflects whatever aircraft was looked up
+      // previously and must not be shown as this one's result.
+      const char* statusText;
+      if (infoPending) {
+        statusText = tr(STR_AIRCRAFT_TYPE_LOADING);
+      } else if (aircraftLookupFailed) {
+        statusText = tr(STR_AIRCRAFT_TYPE_UNAVAILABLE);
+      } else {
+        statusText = tr(STR_AIRCRAFT_TYPE_UNKNOWN);
+      }
       renderer.drawText(UI_10_FONT_ID, x, y, statusText, true);
     } else {
       snprintf(line, sizeof(line), tr(STR_AIRCRAFT_TYPE_FORMAT), acInfo.manufacturer, acInfo.icaoType);

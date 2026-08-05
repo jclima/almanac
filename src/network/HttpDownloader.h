@@ -34,9 +34,19 @@ class HttpDownloader {
 
   /**
    * Stream the response body to onData as it arrives, without buffering it.
+   *
+   * outStatus, if non-null, receives the final HTTP status code once one is
+   * known (set on both the success path and the "got a response but it
+   * wasn't 200" path; left untouched on a pure transport failure, e.g. DNS/
+   * TLS/timeout, where no status was ever read). Passing a non-null
+   * outStatus also downgrades the "unexpected status" log from LOG_ERR to
+   * LOG_DBG, since a caller that inspects the status is expected to treat
+   * some non-200 codes as normal outcomes rather than errors. Callers that
+   * omit it (the default) see identical behaviour to before this parameter
+   * existed.
    */
   static bool fetchUrl(const std::string& url, const DataCallback& onData, const std::string& username = "",
-                       const std::string& password = "");
+                       const std::string& password = "", int* outStatus = nullptr);
 
   /**
    * Download a file to the SD card with optional credentials.

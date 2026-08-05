@@ -39,6 +39,11 @@ struct Sink {
   bool* cancelFlag = nullptr;
   size_t total = 0;
   size_t downloaded = 0;
+  // Non-null only for the DataCallback fetchUrl overload when its caller asked
+  // for the status code; every other caller (fetchUrl's other two overloads,
+  // downloadToFile) leaves this null, so the null checks below are a no-op for
+  // them and their behaviour is unchanged.
+  int* outStatus = nullptr;
 };
 
 bool isRedirect(int status) {
@@ -93,8 +98,20 @@ HttpDownloader::DownloadError runGetWolf(const std::string& startUrl, const std:
       }
       continue;
     }
+    // Final (non-redirect) status is now known; report it regardless of
+    // whether it's a success, so a caller that asked for it (outStatus) can
+    // tell "404, no record" apart from "transport failure".
+    if (sink.outStatus) *sink.outStatus = status;
     if (status != 200) {
-      LOG_ERR("HTTP", "wolfSSL unexpected status: %d", status);
+      // A caller that reads outStatus is expected to treat some non-200
+      // codes (e.g. 404) as a normal outcome, not a failure -- don't spam
+      // LOG_ERR for it. Callers that don't (outStatus == nullptr, every
+      // caller before this parameter existed) keep the original LOG_ERR.
+      if (sink.outStatus) {
+        LOG_DBG("HTTP", "wolfSSL unexpected status: %d", status);
+      } else {
+        LOG_ERR("HTTP", "wolfSSL unexpected status: %d", status);
+      }
       return HttpDownloader::HTTP_ERROR;
     }
     if (http.callbackAborted()) return HttpDownloader::FILE_ERROR;
@@ -169,8 +186,18 @@ HttpDownloader::DownloadError runGet(const std::string& url, const std::string& 
     status = esp_http_client_get_status_code(client);
   }
 
+  // Final (non-redirect) status is now known; report it regardless of
+  // whether it's a success, so a caller that asked for it (outStatus) can
+  // tell "404, no record" apart from "transport failure".
+  if (sink.outStatus) *sink.outStatus = status;
   if (status != 200) {
-    LOG_ERR("HTTP", "unexpected status: %d", status);
+    // See the matching comment in runGetWolf: a caller that reads outStatus
+    // is expected to treat some non-200 codes as normal, not an error.
+    if (sink.outStatus) {
+      LOG_DBG("HTTP", "unexpected status: %d", status);
+    } else {
+      LOG_ERR("HTTP", "unexpected status: %d", status);
+    }
     esp_http_client_cleanup(client);
     return HttpDownloader::HTTP_ERROR;
   }
@@ -251,10 +278,11 @@ bool HttpDownloader::fetchUrl(const std::string& url, std::string& outContent, c
 }
 
 bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData, const std::string& username,
-                              const std::string& password) {
+                              const std::string& password, int* outStatus) {
   LOG_DBG("HTTP", "Fetching: %s", url.c_str());
   Sink sink;
   sink.write = onData;
+  sink.outStatus = outStatus;
   return runGetSecure(url, username, password, sink) == OK;
 }
 
