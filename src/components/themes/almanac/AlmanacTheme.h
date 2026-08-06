@@ -85,4 +85,21 @@ class AlmanacTheme final : public BaseTheme {
   // override both of these or lists draw and step at different pitches.
   int getListRowStep(bool hasSubtitle) const override;
   int getListPageItems(int contentHeight, bool hasSubtitle) const override;
+
+  // Signatures copied verbatim from BaseTheme.h (see that file for the
+  // authoritative declarations) so a drift is a compiler error, not a
+  // silently-created new overload.
+  void drawHeader(const GfxRenderer& renderer, Rect rect, const char* title,
+                  const char* subtitle = nullptr) const override;
+  void drawButtonHints(GfxRenderer& renderer, const char* btn1, const char* btn2, const char* btn3,
+                       const char* btn4) const override;
+  void drawList(const GfxRenderer& renderer, Rect rect, int itemCount, int selectedIndex,
+                const std::function<std::string(int index)>& rowTitle,
+                const std::function<std::string(int index)>& rowSubtitle = nullptr,
+                const std::function<UIIcon(int index)>& rowIcon = nullptr,
+                const std::function<std::string(int index)>& rowValue = nullptr, bool highlightValue = false,
+                const std::function<bool(int index)>& rowDimmed = nullptr) const override;
+  void drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
+                      const std::function<std::string(int index)>& buttonLabel,
+                      const std::function<UIIcon(int index)>& rowIcon) const override;
 };
