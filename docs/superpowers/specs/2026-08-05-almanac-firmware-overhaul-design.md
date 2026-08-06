@@ -242,7 +242,27 @@ sole authorship.
 | `pio run -e sticky` (ESP32-S3, other MCU family) | SUCCESS |
 | Host unit tests (`ctest`) | **178/178 passed** |
 | `./bin/clang-format-fix` then `git diff --exit-code` | PASS (CI's exact gate) |
-| `pio check -e default` (cppcheck) | PASSED, 0 high / 0 medium |
+| cppcheck | **0 findings in code this branch authored** |
+
+**On cppcheck:** `pio check -e default` passed early on with 0 high / 0 medium
+and a single low `unreadVariable`, which is now suppressed inline with a
+rationale. Later runs could not reinstall `tool-cppcheck` (the PlatformIO
+package mirror refused connections from this machine), so the final pass was
+run with cppcheck 2.17.1 and the project's own `check_flags` instead. That
+configuration is noisier than PlatformIO's, and it is worth being precise about
+what it found:
+
+- **Nothing** in `InstrumentTheme.cpp`, `NearbyFlightsRender.cpp` or
+  `NearbyFlightsActivity.cpp` — the code this branch actually wrote.
+- Everything it did flag is pre-existing and was left alone:
+  `badBitmaskCheck` on ArduinoJson's `doc["k"] | default` idiom (that operator
+  is ArduinoJson's default-value API, not a bitmask); `unknownMacro` on
+  `PROGMEM` in a generated header; and three `uninitMemberVar` on
+  `StreamingJsonParser`'s fixed arrays. The last was checked rather than
+  assumed: `tokenBuf`, `nestingStack` and `literalExpected` are only ever read
+  up to `tokenLen` / `nestingDepth` / `literalLen`, all of which `reset()`
+  zeroes from the constructor. Zero-filling the arrays would cost cycles on
+  every construction and change no behaviour.
 
 All four environments matter because the version macro reaches them by two
 different routes: `default` gets it injected by `scripts/git_branch.py`, while
@@ -256,9 +276,10 @@ with 977,705 B of app-partition headroom):
 | Build | Flash | RAM |
 |---|---|---|
 | Baseline (`default`) | 5,575,895 | 50,668 |
-| Final (`default`) | 5,579,297 (**+3,402**) | 50,660 (**−8**) |
-| Final (`gh_release`) | 5,536,227 | 50,644 |
-| Final (`slim`) | 5,496,301 | 50,644 |
+| Final (`default`) | 5,579,345 (**+3,450**) | 50,660 (**−8**) |
+| Final (`gh_release`) | 5,536,275 | 50,644 |
+| Final (`slim`) | 5,496,349 | 50,644 |
+| Final (`sticky`, ESP32-S3) | 5,388,115 | 60,308 |
 
 The entire overhaul — a fifth theme, a new mark, the radar guard — costs
 **+3.4 KB of flash and no RAM**, against ~955 KB of remaining headroom.
