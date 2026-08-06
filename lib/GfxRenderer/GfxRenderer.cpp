@@ -723,7 +723,12 @@ void GfxRenderer::drawRect(const int x, const int y, const int width, const int 
   drawLine(x, y, x, y + height - 1, state);
 }
 
-// Border is inside the rectangle
+// NOTE: despite this function's original "border is inside the rectangle"
+// comment, the stroke is NOT fully inside [x, x+width) x [y, y+height): at
+// i=0 the right edge is drawn at column x+width and the bottom edge at row
+// y+height -- one pixel past the last column/row of a width x height box
+// (x+width-1 / y+height-1). A caller that wants the stroke to stay within a
+// logical width x height box must pass width-1, height-1 instead.
 void GfxRenderer::drawRect(const int x, const int y, const int width, const int height, const int lineWidth,
                            const bool state) const {
   for (int i = 0; i < lineWidth; i++) {
