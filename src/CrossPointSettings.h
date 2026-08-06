@@ -258,7 +258,11 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Defaults to Disabled so shortcut-based bookmark toggling remains opt-in.
   uint8_t longPressMenuFunction = LP_MENU_DISABLED;
   // UI Theme
-  uint8_t uiTheme = ALMANAC;
+  // NOTE: not defaulted to ALMANAC yet -- Home's drawButtonMenu doesn't page
+  // on rect.height in any theme, so a 6th menu tile (OPDS configured) clips
+  // under Almanac's solid button-hints bar. Flip this once that's fixed.
+  // See docs/superpowers/specs/2026-08-05-almanac-theme-design.md.
+  uint8_t uiTheme = LYRA;
   // Sunlight fading compensation
   uint8_t fadingFix = 0;
   // Power button return from footnotes (1 = enabled, 0 = disabled)
