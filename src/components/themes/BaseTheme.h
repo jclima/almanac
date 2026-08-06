@@ -189,6 +189,18 @@ class BaseTheme {
   virtual void drawSideButtonHints(const GfxRenderer& renderer, const char* topBtn, const char* bottomBtn) const;
   virtual int getListRowStep(bool hasSubtitle) const;
   virtual int getListPageItems(int contentHeight, bool hasSubtitle) const;
+  // Vertical pitch between home-menu rows. The menu is drawn here but
+  // hit-tested by HomeActivity, so both sides must derive rows identically --
+  // same reason getListRowStep exists. A theme that reserves extra space
+  // below the last row (Almanac's selection stroke) overrides this rather
+  // than adjusting only its own draw, which would desync the hit-test.
+  //
+  // Contract: availableHeight MUST be the same value passed as the menu
+  // rect's height. Draw sites pass rect.height and HomeActivity's hit-test
+  // passes MenuLayout::availableHeight(...); those agree only because
+  // HomeActivity builds the rect from exactly that expression. Pass anything
+  // else and the two silently diverge again.
+  virtual int getMenuRowStep(int availableHeight, int rowCount) const;
   virtual void drawList(const GfxRenderer& renderer, Rect rect, int itemCount, int selectedIndex,
                         const std::function<std::string(int index)>& rowTitle,
                         const std::function<std::string(int index)>& rowSubtitle = nullptr,
