@@ -232,30 +232,71 @@ sole authorship.
 
 ## Verification
 
-### What I can verify (and will, before claiming completion)
+### Verified (results, not intentions)
 
-- `pio run` clean for `default`, `gh_release`, and `slim`, with no new warnings.
-- Host unit tests pass (`test/` — 14 suites, including `geo_math`,
-  `opensky_states_parser`, `aircraft_info_parser`).
-- `clang-format` clean across `src/`.
-- Flash/RAM delta reported in bytes per phase, against the Phase A baseline.
-- Radar and detail geometry re-derived arithmetically for all five themes ×
-  both orientations, confirming `radiusPx > 0` and that the detail screen never
-  draws past `maxY`.
+| Check | Result |
+|---|---|
+| `pio run -e default` | SUCCESS |
+| `pio run -e gh_release` | SUCCESS |
+| `pio run -e slim` (serial logging compiled out) | SUCCESS |
+| `pio run -e sticky` (ESP32-S3, other MCU family) | SUCCESS |
+| Host unit tests (`ctest`) | **178/178 passed** |
+| `./bin/clang-format-fix` then `git diff --exit-code` | PASS (CI's exact gate) |
+| `pio check -e default` (cppcheck) | PASSED, 0 high / 0 medium |
 
-### What I cannot verify — the user's step
+All four environments matter because the version macro reaches them by two
+different routes: `default` gets it injected by `scripts/git_branch.py`, while
+`gh_release`/`slim`/`sticky` set it via `build_flags`. Both routes were edited,
+so both were exercised. `slim` additionally proves the new `LOG_ERR` in the
+radar guard compiles away cleanly with `-UENABLE_SERIAL_LOG`.
 
-There is no device in this session. On-device testing is explicitly the human
-tester's scope per `CLAUDE.md`, and nothing below was validated visually:
+**Footprint** (against the Phase A baseline of 5,575,895 B flash / 50,668 B RAM,
+with 977,705 B of app-partition headroom):
 
-1. Every screen the theme touches — Home, Settings, file browser, flights list,
-   radar, flight detail, reader status bar — in **portrait and landscape**.
-2. Boot splash and sleep screen render the new mark cleanly at 1-bit 120×120.
-3. Serial log free of `GFX !! Outside range` on the radar screen in both
-   orientations.
-4. Free heap stays above ~50 KB through a flights fetch and a reading session.
-5. Existing reading progress and bookmarks survive the upgrade (they should —
-   `.crosspoint` is untouched — but this is the assertion most worth checking).
+| Build | Flash | RAM |
+|---|---|---|
+| Baseline (`default`) | 5,575,895 | 50,668 |
+| Final (`default`) | 5,579,297 (**+3,402**) | 50,660 (**−8**) |
+| Final (`gh_release`) | 5,536,227 | 50,644 |
+| Final (`slim`) | 5,496,301 | 50,644 |
+
+The entire overhaul — a fifth theme, a new mark, the radar guard — costs
+**+3.4 KB of flash and no RAM**, against ~955 KB of remaining headroom.
+
+Geometry was re-derived arithmetically from each theme's real `ThemeMetrics`
+for all five themes × four screen configurations (see the table in Phase C),
+confirming `radiusPx > 0` everywhere and that the detail screen never draws
+past `maxY`.
+
+### NOT verified — the user's step
+
+There is no device in this session, and **no pixel below was ever seen**.
+On-device testing is explicitly the human tester's scope per `CLAUDE.md`. The
+Instrument theme is entirely new rendering code that has only been proven to
+compile and to be arithmetically sound.
+
+In rough priority order:
+
+1. **Instrument theme, every screen it touches** — Home, Settings, file browser,
+   flights list, radar, flight detail, reader status bar — in **portrait and
+   landscape**. The header's battery "well", the list frame and separators, and
+   the two-level selection are the parts most likely to need nudging.
+2. **List touch alignment.** Rows were deliberately kept on `BaseTheme`'s grid
+   so taps land where they look. Confirm on a touch device that tapping a row
+   selects *that* row, especially the first and last on a page.
+3. **Boot splash and sleep screen** render the new mark cleanly at 1-bit 120×120.
+   It was inspected as ASCII art and as a PNG, never on e-ink.
+4. **Serial log free of `GFX !! Outside range`** on the radar screen in both
+   orientations, for all five themes.
+5. **Existing reading progress and bookmarks survive the upgrade.** They should —
+   `.crosspoint` is untouched — but this is the assertion most worth checking,
+   because it is the one whose failure loses user data.
+6. **Free heap** stays above ~50 KB through a flights fetch and a reading session.
+7. **Theme picker in a non-English locale.** `STR_THEME_INSTRUMENT` exists only
+   in `english.yaml` and falls back for the other 30 languages, which is the
+   documented behaviour but was not observed.
+8. **OTA check** reports "no update available" rather than offering an upstream
+   release.
 
 ## Out of scope
 

@@ -450,6 +450,10 @@ void NearbyFlightsActivity::renderDetail() const {
     const unsigned long ageSeconds = (millis() - fetchCompletedMs) / 1000;
     snprintf(line, sizeof(line), tr(STR_FLIGHT_DATA_AGE_FORMAT), ageSeconds);
     renderer.drawText(UI_10_FONT_ID, x, y, line, true);
+    // Dead on the last field, and deliberately kept: every block advances y, so
+    // a field added after this one inherits the correct position instead of
+    // drawing on top of the data-age line.
+    // cppcheck-suppress unreadVariable
     y += metrics.listRowHeight;
   }
 
