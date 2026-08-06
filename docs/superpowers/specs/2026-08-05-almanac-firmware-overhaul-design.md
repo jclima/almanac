@@ -54,33 +54,53 @@ bytes (not just the 85.1% figure quoted in the theme spec).
 
 ### Product name
 
-`STR_CROSSPOINT` → `STR_APP_NAME`, value `"Almanac"`, across all 24 translation
-YAMLs. The product name is a proper noun and is not translated, so every file
-carries the same value. Rendered by `BootActivity.cpp:17` and
+`STR_CROSSPOINT` → `STR_APP_NAME`, value `"Almanac"`, across all **31**
+translation YAMLs. The product name is a proper noun and is not translated, so
+every file carries the same value. Rendered by `BootActivity.cpp:17` and
 `SleepActivity.cpp:163`.
+
+`STR_CALIBRE_INSTRUCTION_1` ("Install CrossPoint Reader plugin") is left alone:
+it names the third-party Calibre plugin the user must actually install, which
+really is called that. Rebranding it would misdirect the user.
 
 ### Mark
 
-The current `Logo120` is a 120×120 1-bit bookmark/chevron glyph generated from
-`src/images/logo.svg`. Almanac gets its own mark, authored as SVG and converted
-with the existing `scripts/convert_icon.py`. The motif joins the two things the
-firmware does — a book and the sky — rather than picking one.
+The current `Logo120` is a 120×120 1-bit bookmark/chevron glyph. Almanac gets
+its own: a compass rose inside an instrument bezel, tying the product name (an
+almanac is a navigator's reference book), the Instrument theme's panel chrome,
+and the radar screen's range rings into one shape.
+
+`scripts/convert_icon.py` is the wrong tool for it — it rotates its input 90°
+and writes to `src/components/icons/` with an `…Icon` array name, all of which
+suit icons and not the logo — and `cairosvg` is not installed here. The mark
+therefore ships with its own reproducible generator,
+`scripts/generate_logo.py`, which draws with PIL at 8× and downsamples with
+LANCZOS before thresholding so the curves and diagonals land cleanly at 120px.
+
+A four-point rose, not the classic eight: at 120px in one bit, eight points
+render as ~5px-wide spindles with no body. This was checked by rendering both.
 
 ### Version and build identity
 
-- `CROSSPOINT_VERSION` → `ALMANAC_VERSION` (`scripts/git_branch.py`, and the
-  nine consumers found across `main.cpp`, `OtaUpdater`, the web server,
-  `HttpDownloader`, `OtaUpdateActivity`, `SettingsActivity`, `BootActivity`).
+- `CROSSPOINT_VERSION` → `ALMANAC_VERSION` (`scripts/git_branch.py`, plus every
+  consumer across `main.cpp`, `OtaUpdater`, the web server, `HttpDownloader`,
+  `OtaUpdateActivity`, `SettingsActivity`, `BootActivity`, and `HalSystem.cpp`).
+- `CROSSPOINT_RC_HASH` → `ALMANAC_RC_HASH`, in `platformio.ini` and in
+  `.github/workflows/release_candidate.yml` together — the workflow sets the
+  variable the ini reads, so renaming one without the other breaks RC builds.
 - `platformio.ini`'s `[crosspoint]` section → `[almanac]`; version reset to
   `1.0.0` — this is Almanac's first release, not CrossPoint's 1.5.0.
 - HTTP `User-Agent` → `Almanac-ESP32-<version>`.
 
-### OTA
+### OTA (a real correctness bug, not just branding)
 
-`OtaUpdater` checks GitHub releases. Pointing it at upstream's releases would
-offer to overwrite Almanac with CrossPoint. The update source must move to this
-fork's own repository or the check must be disabled; leaving it as-is is a
-correctness bug, not merely a branding one.
+`OtaUpdater.cpp:17` points `latestReleaseUrl` at
+`crosspoint-reader/crosspoint-reader`. The version check is a plain string
+inequality against `ALMANAC_VERSION`, so **every** upstream release reads as
+"an update is available", and accepting it flashes CrossPoint over Almanac.
+
+Repointed at this fork's own releases. With no release published there the
+check degrades to "No update available", which is the correct outcome.
 
 ### Deliberately NOT renamed: the `.crosspoint` SD directory
 
@@ -116,9 +136,34 @@ The two load-bearing traps that spec identifies are carried forward verbatim:
   silently reset the setting on every load — an unselectable theme with no
   error anywhere. Both change together.
 
-Per the spec, the radar and detail-screen geometry is **re-derived from the code
-as written** for every theme × orientation, not trusted from the spec's
-worked examples.
+Rows deliberately stay on `BaseTheme`'s grid rather than being inset inside the
+frame. `MappedInputManager::listItemFromPoint` maps a tap with
+`(y - listTop) / rowStep` and knows nothing about per-theme padding, so
+insetting the rows would shift every row down relative to where touch believes
+it is. The frame is outset above the grid instead, into the `verticalSpacing`
+gap. `getListPageItems` keeps `BaseTheme`'s exact formula for the same reason —
+`listItemFromPoint` calls it to decide which page a tap lands on.
+
+### Geometry verification (re-derived from code, not from the theme spec)
+
+Radar `radiusPx` and detail-screen line budget, computed from each theme's
+actual `ThemeMetrics` values:
+
+| Theme | X4 portrait | X4 landscape | X3 portrait | X3 landscape |
+|---|---|---|---|---|
+| Classic | 218 · 10/10 | 113 · 10/10 | 242 · 10/10 | 137 · 10/10 |
+| Lyra | 218 · 10/10 | **69** · 7/10 | 242 · 10/10 | 93 · 8/10 |
+| Lyra 3 Covers | 218 · 10/10 | **69** · 7/10 | 242 · 10/10 | 93 · 8/10 |
+| RoundedRaff | 218 · 10/10 | 97 · 8/10 | 242 · 10/10 | 121 · 9/10 |
+| **Instrument** | 218 · 10/10 | 97 · 9/10 | 242 · 10/10 | 121 · 10/10 |
+
+(`radiusPx` · detail lines fitting of 10.)
+
+`radiusPx > 0` in all 20 combinations. The theme spec's predicted figures —
+portrait 218, landscape 97, and 9 of 10 detail lines in landscape — are
+confirmed exactly. The two-pass detail truncation already does more work under
+Lyra (7/10) than it will under Instrument, so this theme is not the worst case
+for it.
 
 ## Phase D — Flights hardening
 
@@ -126,27 +171,30 @@ worked examples.
 has taken seven consecutive fix commits. The code is careful and heavily
 reasoned; the work here is structural and defensive, not a rewrite.
 
-### D1. Degenerate radar geometry (real defect)
+### D1. Degenerate radar geometry (latent, not live)
 
 `renderRadar()` derives `plotHeight` from theme metrics and then
 `radiusPx = min(pageWidth/2, plotHeight/2) - plotMargin`
-(`NearbyFlightsActivity.cpp:437-467`). Nothing guards either value.
-
-`drawCircle` guards `radius <= 0`, but nothing else does. With a sufficiently
-tall header plus a tall readout strip in landscape, `radiusPx` goes negative and
-the unguarded consumers draw far off-screen:
+(`NearbyFlightsActivity.cpp:437-467`). `drawCircle` guards `radius <= 0`;
+nothing else does. If `radiusPx` went negative, the unguarded consumers would
+draw far off-screen:
 
 - `drawLine(cx, cy - radiusPx, cx, cy + radiusPx, ...)` — inverted crosshair
 - `drawText(..., cy - radiusPx - 22, "N")` — compass letters off-panel
 - `GeoMath::polarToScreen(..., radiusPx)` — every aircraft mis-plotted
 
 `GfxRenderer::drawPixel` logs `LOG_ERR("GFX", "!! Outside range")` **once per
-out-of-range pixel**, so this floods the serial log rather than failing
-quietly. Adding a fifth theme with a taller header is exactly the change that
-makes a latent case reachable, so the guard lands with the theme.
+out-of-range pixel**, so this floods the serial log rather than failing quietly.
 
-**Fix:** clamp defensively and skip the plot when the area is unusable, keeping
-the readout strip and button hints.
+**It is not currently reachable.** Deriving the geometry across all five themes
+× four screen configurations (see the table below) puts the tightest case at
+`radiusPx = 69` (Lyra, X4 landscape). Instrument is not the tightest — it sits
+at 97, level with RoundedRaff.
+
+The guard is therefore *hardening*, not a bug fix: the margin is thin, the
+failure mode is loud and ugly, and a future theme with a taller header is
+exactly what would cross the line. Clamp, and skip the plot when the area is
+unusable while keeping the readout strip and button hints.
 
 ### D2. Decomposition
 

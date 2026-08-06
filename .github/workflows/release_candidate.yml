@@ -39,7 +39,7 @@ jobs:
 
       - name: Build CrossPoint Release Candidate
         env:
-          CROSSPOINT_RC_HASH: ${{ env.SHORT_SHA }}
+          ALMANAC_RC_HASH: ${{ env.SHORT_SHA }}
         run: pio run -e gh_release_rc
 
       - name: Upload Artifacts
