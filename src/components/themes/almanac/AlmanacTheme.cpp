@@ -55,8 +55,8 @@ constexpr int kMenuTileStroke = 2;
 // AlmanacMetrics::values.batteryWidth/batteryHeight -- the same icon
 // footprint BaseTheme's pictogram uses -- so it reads as the same battery
 // icon, just recoloured for this bar.
-void drawBatteryPictogramWhite(const GfxRenderer& renderer, const int x, const int y, const int width,
-                               const int height, const int percentage) {
+void drawBatteryPictogramWhite(const GfxRenderer& renderer, const int x, const int y, const int width, const int height,
+                               const int percentage) {
   // Casing: top/bottom walls, left wall, right end-cap plus a small terminal
   // nub -- same geometry as BaseTheme::drawBatteryOutline.
   renderer.drawLine(x + 1, y, x + width - 3, y, false);
@@ -113,8 +113,7 @@ void AlmanacTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char
   // which always draws its pictogram via drawBatteryRight and only gates the
   // percentage *text* (see BaseTheme.cpp's drawBatteryRight -> fillBatteryIcon
   // call, which runs unconditionally).
-  const bool showPercentage =
-      SETTINGS.hideBatteryPercentage != AlmanacSettings::HIDE_BATTERY_PERCENTAGE::HIDE_ALWAYS;
+  const bool showPercentage = SETTINGS.hideBatteryPercentage != AlmanacSettings::HIDE_BATTERY_PERCENTAGE::HIDE_ALWAYS;
   std::string batteryText;
   if (showPercentage) {
     batteryText = std::to_string(powerManager.getBatteryPercentage()) + "%";
@@ -227,14 +226,24 @@ void AlmanacTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, cons
   // Evenly distribute the four slots; a single continuous black bar (no
   // per-slot box or divider) means an empty label just leaves that slot's
   // portion of the bar blank -- no stray border or gap artifact to avoid.
+  //
+  // Labels are truncated to their slot. Without it a long translation runs
+  // into its neighbour: the slot is only pageWidth/4 (120px on X4 portrait)
+  // and the longest hint across the 31 shipped languages is Brazilian
+  // Portuguese's "Tentar novamente" (STR_RETRY, 16 characters). truncatedText
+  // returns the string unchanged when it already fits, so this costs nothing
+  // in the common case and cannot make a fitting label worse.
+  constexpr int kSlotTextPadding = 4;
+  const int maxLabelWidth = std::max(0, slotWidth - kSlotTextPadding * 2);
   for (int i = 0; i < kSlots; i++) {
     if (labels[i] == nullptr || labels[i][0] == '\0') {
       continue;
     }
-    const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, labels[i]);
+    const std::string label = renderer.truncatedText(UI_10_FONT_ID, labels[i], maxLabelWidth);
+    const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, label.c_str());
     const int slotX = i * slotWidth;
     const int textX = slotX + (slotWidth - textWidth) / 2;
-    renderer.drawText(UI_10_FONT_ID, textX, textY, labels[i], false);
+    renderer.drawText(UI_10_FONT_ID, textX, textY, label.c_str(), false);
   }
 
   renderer.setOrientation(origOrientation);
