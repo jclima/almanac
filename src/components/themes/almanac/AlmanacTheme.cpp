@@ -54,16 +54,46 @@ void AlmanacTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char
   // pictogram: it preserves the information (still gated by the same
   // hideBatteryPercentage setting Base honors) and, arguably, reads more
   // like an instrument-panel readout than the icon would have.
+  const bool showPercentage =
+      SETTINGS.hideBatteryPercentage != CrossPointSettings::HIDE_BATTERY_PERCENTAGE::HIDE_ALWAYS;
   std::string batteryText;
-  if (SETTINGS.hideBatteryPercentage != CrossPointSettings::HIDE_BATTERY_PERCENTAGE::HIDE_ALWAYS) {
+  if (showPercentage) {
     batteryText = std::to_string(powerManager.getBatteryPercentage()) + "%";
   }
 
+  // Charging cue: every other theme draws BaseTheme::fillBatteryIcon's
+  // lightning bolt whenever gpio.isUsbConnected(), and does so
+  // unconditionally on hideBatteryPercentage (see BaseTheme.cpp's
+  // drawBatteryRight -> fillBatteryIcon call, which always runs; only the
+  // percentage *text* is gated there). The pictogram itself is gone for the
+  // same drawBatteryOutline reason as above, but drawBatteryLightningBolt is
+  // a separate, static, colour-parameterless-but-already-white helper
+  // (it plots with state=false -- "white/inverted on black fill for
+  // visibility", per its own comment -- exactly this bar's convention) that
+  // AlmanacTheme inherits, so it's reused directly rather than reinvented.
+  // It must render even when showPercentage is false, so it is NOT folded
+  // into the `if (showPercentage)` block above.
+  const bool charging = gpio.isUsbConnected();
   int rightEdge = rect.x + rect.width - sidePadding;
-  if (!batteryText.empty()) {
-    const int batteryWidth = renderer.getTextWidth(SMALL_FONT_ID, batteryText.c_str());
-    renderer.drawText(SMALL_FONT_ID, rightEdge - batteryWidth, smallTextY, batteryText.c_str(), false);
-    rightEdge -= batteryWidth + sidePadding;
+  if (!batteryText.empty() || charging) {
+    constexpr int kBoltWidth = 6;
+    constexpr int kBoltHeight = 8;
+    constexpr int kBoltTextGap = 4;
+
+    const int textWidth = batteryText.empty() ? 0 : renderer.getTextWidth(SMALL_FONT_ID, batteryText.c_str());
+    const int innerGap = (charging && textWidth > 0) ? kBoltTextGap : 0;
+
+    if (textWidth > 0) {
+      renderer.drawText(SMALL_FONT_ID, rightEdge - textWidth, smallTextY, batteryText.c_str(), false);
+    }
+    if (charging) {
+      const int boltX = rightEdge - textWidth - innerGap - kBoltWidth;
+      const int boltY = smallTextY + (renderer.getLineHeight(SMALL_FONT_ID) - kBoltHeight) / 2;
+      drawBatteryLightningBolt(renderer, boltX, boltY);
+    }
+
+    const int boltWidth = charging ? kBoltWidth : 0;
+    rightEdge -= textWidth + innerGap + boltWidth + sidePadding;
   }
 
   // Title (left) and subtitle (right, e.g. Settings' version string or the
