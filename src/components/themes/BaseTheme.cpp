@@ -15,6 +15,7 @@
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
 #include "components/icons/bookmark.h"
+#include "components/themes/MenuLayout.h"
 #include "fontIds.h"
 
 // Internal constants
@@ -697,9 +698,15 @@ void BaseTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
 void BaseTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                                const std::function<std::string(int index)>& buttonLabel,
                                const std::function<UIIcon(int index)>& rowIcon) const {
+  // Rows start at rect.y -- homeMenuTopOffset already separates them from the
+  // cover tile -- and their gaps compress if the menu would otherwise run into
+  // the button-hints bar. Menus that already fit keep their natural pitch.
+  const int rowStep =
+      MenuLayout::fittedRowStep(rect.height, BaseMetrics::values.menuRowHeight,
+                                BaseMetrics::values.menuRowHeight + BaseMetrics::values.menuSpacing, buttonCount);
+
   for (int i = 0; i < buttonCount; ++i) {
-    const int tileY = BaseMetrics::values.verticalSpacing + rect.y +
-                      static_cast<int>(i) * (BaseMetrics::values.menuRowHeight + BaseMetrics::values.menuSpacing);
+    const int tileY = rect.y + i * rowStep;
 
     const bool selected = selectedIndex == i;
 

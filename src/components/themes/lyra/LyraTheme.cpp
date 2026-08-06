@@ -28,6 +28,7 @@
 #include "components/icons/text24.h"
 #include "components/icons/transfer.h"
 #include "components/icons/wifi.h"
+#include "components/themes/MenuLayout.h"
 #include "fontIds.h"
 
 // Internal constants
@@ -549,10 +550,15 @@ void LyraTheme::drawEmptyRecents(const GfxRenderer& renderer, const Rect rect) c
 void LyraTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                                const std::function<std::string(int index)>& buttonLabel,
                                const std::function<UIIcon(int index)>& rowIcon) const {
+  // Gaps compress if the menu would otherwise run into the button-hints bar;
+  // a menu that already fits keeps its natural pitch.
+  const int rowStep =
+      MenuLayout::fittedRowStep(rect.height, LyraMetrics::values.menuRowHeight,
+                                LyraMetrics::values.menuRowHeight + LyraMetrics::values.menuSpacing, buttonCount);
+
   for (int i = 0; i < buttonCount; ++i) {
     int tileWidth = rect.width - LyraMetrics::values.contentSidePadding * 2;
-    Rect tileRect = Rect{rect.x + LyraMetrics::values.contentSidePadding,
-                         rect.y + i * (LyraMetrics::values.menuRowHeight + LyraMetrics::values.menuSpacing), tileWidth,
+    Rect tileRect = Rect{rect.x + LyraMetrics::values.contentSidePadding, rect.y + i * rowStep, tileWidth,
                          LyraMetrics::values.menuRowHeight};
 
     const bool selected = selectedIndex == i;

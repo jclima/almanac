@@ -18,6 +18,7 @@
 #include "OpdsServerStore.h"
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
+#include "components/themes/MenuLayout.h"
 #include "fontIds.h"
 
 int HomeActivity::getMenuItemCount() const {
@@ -251,14 +252,19 @@ void HomeActivity::loop() {
     return;
   }
 
-  const int menuTop = metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset;
+  const int menuTop = MenuLayout::menuTop(metrics);
   const int renderedMenuSelection =
       metrics.homeContinueReadingInMenu ? selectorIndex : selectorIndex - recentBooks.size();
   const int renderedMenuCount =
       menuCount - (metrics.homeContinueReadingInMenu ? 0 : static_cast<int>(recentBooks.size()));
+  // Hit-test against the same pitch the theme draws with, so touch targets keep
+  // tracking the rows when the gaps compress to clear the button-hints bar.
+  const int menuRowStep =
+      MenuLayout::fittedRowStep(MenuLayout::availableHeight(metrics, renderer.getScreenHeight()), metrics.menuRowHeight,
+                                metrics.menuRowHeight + metrics.menuSpacing, renderedMenuCount);
   int menuRow = -1;
-  const auto menuTouch = mappedInput.rowTouch(menuRow, menuTop, metrics.menuRowHeight + metrics.menuSpacing,
-                                              renderedMenuCount, 0, INT32_MAX, metrics.menuRowHeight);
+  const auto menuTouch =
+      mappedInput.rowTouch(menuRow, menuTop, menuRowStep, renderedMenuCount, 0, INT32_MAX, metrics.menuRowHeight);
   if (menuTouch != MappedInputManager::RowTouch::None) {
     const int touchedIndex =
         metrics.homeContinueReadingInMenu ? menuRow : menuRow + static_cast<int>(recentBooks.size());
@@ -318,11 +324,10 @@ void HomeActivity::render(RenderLock&&) {
     menuIcons.insert(menuIcons.begin(), Book);
   }
 
+  // Height is the run from the menu's own top edge down to the button-hints
+  // bar, so themes can size their rows against the space that actually exists.
   GUI.drawButtonMenu(
-      renderer,
-      Rect{0, metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset, pageWidth,
-           pageHeight - (metrics.headerHeight + metrics.homeTopPadding + metrics.verticalSpacing +
-                         metrics.homeMenuTopOffset + metrics.buttonHintsHeight)},
+      renderer, Rect{0, MenuLayout::menuTop(metrics), pageWidth, MenuLayout::availableHeight(metrics, pageHeight)},
       static_cast<int>(menuItems.size()),
       metrics.homeContinueReadingInMenu ? selectorIndex : selectorIndex - recentBooks.size(),
       [&menuItems](int index) { return std::string(menuItems[index]); },
