@@ -16,8 +16,8 @@ bool keyIs(const char* key, size_t len, const char* literal) {
 }  // namespace
 
 AircraftInfoParser::AircraftInfoParser()
-    : parser(JsonCallbacks{this, sOnKey, sOnString, sOnNumber, sOnBool, sOnNull, sOnObjectStart, sOnObjectEnd,
-                           nullptr, nullptr}) {}
+    : parser(JsonCallbacks{this, sOnKey, sOnString, sOnNumber, sOnBool, sOnNull, sOnObjectStart, sOnObjectEnd, nullptr,
+                           nullptr}) {}
 
 void AircraftInfoParser::reset() {
   parser.reset();
@@ -141,6 +141,4 @@ void AircraftInfoParser::sOnBool(void* ctx, bool /*value*/) {
   static_cast<AircraftInfoParser*>(ctx)->lastKey = LastKey::NONE;
 }
 
-void AircraftInfoParser::sOnNull(void* ctx) {
-  static_cast<AircraftInfoParser*>(ctx)->lastKey = LastKey::NONE;
-}
+void AircraftInfoParser::sOnNull(void* ctx) { static_cast<AircraftInfoParser*>(ctx)->lastKey = LastKey::NONE; }
