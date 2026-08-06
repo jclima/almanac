@@ -67,7 +67,7 @@ really is called that. Rebranding it would misdirect the user.
 
 The current `Logo120` is a 120×120 1-bit bookmark/chevron glyph. Almanac gets
 its own: a compass rose inside an instrument bezel, tying the product name (an
-almanac is a navigator's reference book), the Instrument theme's panel chrome,
+almanac is a navigator's reference book), the Almanac theme's panel chrome,
 and the radar screen's range rings into one shape.
 
 `scripts/convert_icon.py` is the wrong tool for it — it rotates its input 90°
@@ -114,37 +114,50 @@ The directory is on-disk state, not a user-visible brand surface. It stays.
 Changing it later would require a migration pass, which is out of scope for a
 rebrand.
 
-## Phase C — Signature theme
+## Phase C — Signature theme: SUPERSEDED, work discarded
 
-Implements the already-approved
-[Almanac theme spec](2026-08-05-almanac-theme-design.md) unchanged in substance.
+This phase originally built an `InstrumentTheme` from the approved
+[Almanac theme spec](2026-08-05-almanac-theme-design.md). **It was written, then
+thrown away**, because `develop` had meanwhile grown a complete `AlmanacTheme`
+implementing the same spec — and a better one.
 
-**One naming change:** the product is now called Almanac, so a theme also named
-"Almanac" would read as *Almanac → Settings → Theme → Almanac*. The theme ships
-as **Instrument** (`InstrumentTheme`, `InstrumentMetrics`, `UI_THEME::INSTRUMENT`),
-which also describes the look more accurately. Everything else — the four
-overridden virtuals, the metrics table, the framed-list-with-separators
-decision — carries over as specced.
+Six commits on `develop` (`f13b9c62` … `962091a2`) had already landed it, three
+of them fixes found *on hardware*:
 
-The two load-bearing traps that spec identifies are carried forward verbatim:
+- `a6822a0b` restores the charging indicator in the header. The parallel
+  implementation drew a white "well" into the black bar and hosted the stock
+  battery pictogram in it; it would have lost the charging bolt entirely.
+  `AlmanacTheme` instead renders the percentage as white text and reuses
+  `drawBatteryLightningBolt`, which already plots white — a better answer to the
+  same problem (the battery outline helper is hardcoded to black ink).
+- `c9da82ce` stops the list frame and selection stroke drawing off-screen, by
+  framing at `width - 1, height - 1`. The discarded version framed at full
+  width and would have reproduced exactly the off-panel `drawPixel` error
+  storm this spec's Phase D warns about.
+- `938678e6` corrects `HomeActivity`'s button-menu rect height.
 
-- `UI_THEME` values are persisted in settings JSON, so `INSTRUMENT` must be
-  **appended** (`= 4`), never inserted.
-- `SettingsList.h`'s `enumValues` list is **positional**, and
-  `AlmanacSettings::fromJson` clamps `ENUM` values to `enumValues.size()`.
-  Adding the enum value without appending a fifth list entry makes the clamp
-  silently reset the setting on every load — an unselectable theme with no
-  error anywhere. Both change together.
+`962091a2` also holds the default at **Lyra** pending a Home 6th-tile fix. The
+discarded work flipped the default to its own theme, which would have reverted
+that deliberate decision.
 
-Rows deliberately stay on `BaseTheme`'s grid rather than being inset inside the
-frame. `MappedInputManager::listItemFromPoint` maps a tap with
-`(y - listTop) / rowStep` and knows nothing about per-theme padding, so
-insetting the rows would shift every row down relative to where touch believes
-it is. The frame is outset above the grid instead, into the `verticalSpacing`
-gap. `getListPageItems` keeps `BaseTheme`'s exact formula for the same reason —
-`listItemFromPoint` calls it to decide which page a tap lands on.
+**Kept from the discarded branch:** one thing `AlmanacTheme` lacked — button
+hints are drawn into a `pageWidth / 4` slot (120 px on X4 portrait) with no
+truncation, while the longest hint across the 31 shipped languages is Brazilian
+Portuguese's "Tentar novamente" (`STR_RETRY`, 16 characters). Ported as a
+defensive `truncatedText` call, which returns the string unchanged when it fits.
 
-### Geometry verification (re-derived from code, not from the theme spec)
+**The lesson worth recording:** the theme was the one part of this overhaul
+whose correctness could not be established without hardware, and it is the one
+part that turned out to be redundant. Four screens of careful reasoning lost to
+three commits of someone actually looking at the panel.
+
+### Geometry verification (still valid, and now validating `AlmanacTheme`)
+
+`AlmanacMetrics` and the discarded `InstrumentMetrics` are numerically
+identical — both come from the same approved spec (`headerHeight` 56,
+`contentSidePadding` 16, `listRowHeight` 34, `listWithSubtitleRowHeight` 52,
+`buttonHintsHeight` 48). This derivation therefore applies verbatim to the
+theme that shipped.
 
 Radar `radiusPx` and detail-screen line budget, computed from each theme's
 actual `ThemeMetrics` values:
@@ -155,14 +168,14 @@ actual `ThemeMetrics` values:
 | Lyra | 218 · 10/10 | **69** · 7/10 | 242 · 10/10 | 93 · 8/10 |
 | Lyra 3 Covers | 218 · 10/10 | **69** · 7/10 | 242 · 10/10 | 93 · 8/10 |
 | RoundedRaff | 218 · 10/10 | 97 · 8/10 | 242 · 10/10 | 121 · 9/10 |
-| **Instrument** | 218 · 10/10 | 97 · 9/10 | 242 · 10/10 | 121 · 10/10 |
+| **Almanac** | 218 · 10/10 | 97 · 9/10 | 242 · 10/10 | 121 · 10/10 |
 
 (`radiusPx` · detail lines fitting of 10.)
 
 `radiusPx > 0` in all 20 combinations. The theme spec's predicted figures —
 portrait 218, landscape 97, and 9 of 10 detail lines in landscape — are
 confirmed exactly. The two-pass detail truncation already does more work under
-Lyra (7/10) than it will under Instrument, so this theme is not the worst case
+Lyra (7/10) than it does under Almanac, so the new theme is not the worst case
 for it.
 
 ## Phase D — Flights hardening
@@ -188,7 +201,7 @@ out-of-range pixel**, so this floods the serial log rather than failing quietly.
 
 **It is not currently reachable.** Deriving the geometry across all five themes
 × four screen configurations (see the table below) puts the tightest case at
-`radiusPx = 69` (Lyra, X4 landscape). Instrument is not the tightest — it sits
+`radiusPx = 69` (Lyra, X4 landscape). Almanac is not the tightest — it sits
 at 97, level with RoundedRaff.
 
 The guard is therefore *hardening*, not a bug fix: the margin is thin, the
@@ -252,7 +265,7 @@ run with cppcheck 2.17.1 and the project's own `check_flags` instead. That
 configuration is noisier than PlatformIO's, and it is worth being precise about
 what it found:
 
-- **Nothing** in `InstrumentTheme.cpp`, `NearbyFlightsRender.cpp` or
+- **Nothing** in `NearbyFlightsRender.cpp` or
   `NearbyFlightsActivity.cpp` — the code this branch actually wrote.
 - Everything it did flag is pre-existing and was left alone:
   `badBitmaskCheck` on ArduinoJson's `doc["k"] | default` idiom (that operator
@@ -292,31 +305,30 @@ past `maxY`.
 ### NOT verified — the user's step
 
 There is no device in this session, and **no pixel below was ever seen**.
-On-device testing is explicitly the human tester's scope per `CLAUDE.md`. The
-Instrument theme is entirely new rendering code that has only been proven to
-compile and to be arithmetically sound.
+On-device testing is explicitly the human tester's scope per `CLAUDE.md`.
 
-In rough priority order:
+Dropping the parallel theme removed the largest untested surface — `AlmanacTheme`
+arrives already validated on hardware. What remains, in rough priority order:
 
-1. **Instrument theme, every screen it touches** — Home, Settings, file browser,
-   flights list, radar, flight detail, reader status bar — in **portrait and
-   landscape**. The header's battery "well", the list frame and separators, and
-   the two-level selection are the parts most likely to need nudging.
-2. **List touch alignment.** Rows were deliberately kept on `BaseTheme`'s grid
-   so taps land where they look. Confirm on a touch device that tapping a row
-   selects *that* row, especially the first and last on a page.
-3. **Boot splash and sleep screen** render the new mark cleanly at 1-bit 120×120.
+1. **Existing reading progress and bookmarks survive the upgrade.** They should —
+   `/.crosspoint/` is untouched by the rebrand, deliberately — but this is the
+   assertion most worth checking, because it is the only one whose failure loses
+   user data. The same applies to the browser's saved upload settings, whose
+   localStorage key was kept for the same reason.
+2. **Boot splash and sleep screen** render the new mark cleanly at 1-bit 120×120.
    It was inspected as ASCII art and as a PNG, never on e-ink.
+3. **Button hints in a long-label language.** The truncation ported into
+   `AlmanacTheme::drawButtonHints` changes rendering for any label that would
+   have overflowed its slot. Brazilian Portuguese on the flights error screen
+   ("Tentar novamente") is the case it was written for; check it reads sensibly
+   truncated rather than confusingly clipped.
 4. **Serial log free of `GFX !! Outside range`** on the radar screen in both
-   orientations, for all five themes.
-5. **Existing reading progress and bookmarks survive the upgrade.** They should —
-   `.crosspoint` is untouched — but this is the assertion most worth checking,
-   because it is the one whose failure loses user data.
+   orientations, across all five themes — the guard added in Phase D should make
+   this unconditionally true, but it has only been reasoned about.
+5. **Web UI** pages show Almanac and the compass mark, and the file transfer,
+   settings and fonts flows still work after the rebrand.
 6. **Free heap** stays above ~50 KB through a flights fetch and a reading session.
-7. **Theme picker in a non-English locale.** `STR_THEME_INSTRUMENT` exists only
-   in `english.yaml` and falls back for the other 30 languages, which is the
-   documented behaviour but was not observed.
-8. **OTA check** reports "no update available" rather than offering an upstream
+7. **OTA check** reports "no update available" rather than offering an upstream
    release.
 
 ## Out of scope
