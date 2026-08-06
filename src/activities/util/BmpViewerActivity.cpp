@@ -8,7 +8,7 @@
 
 #include <algorithm>
 
-#include "CrossPointSettings.h"
+#include "AlmanacSettings.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -165,7 +165,7 @@ void BmpViewerActivity::doSetSleepCover() {
   }
 
   if (success) {
-    SETTINGS.sleepScreen = CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM;
+    SETTINGS.sleepScreen = AlmanacSettings::SLEEP_SCREEN_MODE::CUSTOM;
     SETTINGS.saveToFile();
     GUI.drawPopup(renderer, tr(STR_DONE));
   } else {

@@ -12,8 +12,8 @@
 #include <cstring>
 #include <vector>
 
-#include "CrossPointSettings.h"
-#include "CrossPointState.h"
+#include "AlmanacSettings.h"
+#include "AlmanacState.h"
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
 #include "RecentBooksStore.h"

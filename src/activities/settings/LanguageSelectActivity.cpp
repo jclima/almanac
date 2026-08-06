@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <iterator>
 
-#include "CrossPointSettings.h"
+#include "AlmanacSettings.h"
 #include "I18nKeys.h"
 #include "MappedInputManager.h"
 #include "fontIds.h"

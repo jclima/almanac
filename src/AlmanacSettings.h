@@ -5,12 +5,12 @@
 
 #include <cstdint>
 
-class CrossPointSettings : public PersistableStore<CrossPointSettings> {
+class AlmanacSettings : public PersistableStore<AlmanacSettings> {
  private:
   // Private constructor for singleton
-  CrossPointSettings() = default;
+  AlmanacSettings() = default;
 
-  friend class PersistableStore<CrossPointSettings>;
+  friend class PersistableStore<AlmanacSettings>;
 
  public:
   enum SLEEP_SCREEN_MODE {
@@ -304,9 +304,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   SdFontIdResolver sdFontIdResolver = nullptr;
   void* sdFontResolverCtx = nullptr;
 
-  uint16_t getPowerButtonDuration() const {
-    return (shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP) ? 10 : 400;
-  }
+  uint16_t getPowerButtonDuration() const { return (shortPwrBtn == AlmanacSettings::SHORT_PWRBTN::SLEEP) ? 10 : 400; }
   int getReaderFontId() const;
 
   // Drop the SD font selection and fall back to the built-in family. The reader
@@ -359,7 +357,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   void toJson(JsonDocument& doc) const;
   bool fromJson(JsonVariantConst doc);
 
-  static void validateFrontButtonMapping(CrossPointSettings& settings);
+  static void validateFrontButtonMapping(AlmanacSettings& settings);
   static uint8_t sleepTimeoutEnumToMinutes(uint8_t legacyValue);
 
   float getReaderLineCompression() const;
@@ -368,4 +366,4 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
 };
 
 // Helper macro to access settings
-#define SETTINGS CrossPointSettings::getInstance()
+#define SETTINGS AlmanacSettings::getInstance()

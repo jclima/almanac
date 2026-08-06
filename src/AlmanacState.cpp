@@ -1,11 +1,11 @@
-#include "CrossPointState.h"
+#include "AlmanacState.h"
 
 #include <Logging.h>
 
 #include <algorithm>
 #include <cstring>
 
-bool CrossPointState::isRecentSleep(uint16_t idx, uint8_t checkCount) const {
+bool AlmanacState::isRecentSleep(uint16_t idx, uint8_t checkCount) const {
   const uint8_t effectiveCount = std::min(checkCount, recentSleepFill);
   for (uint8_t i = 0; i < effectiveCount; i++) {
     const uint8_t slot = (recentSleepPos + SLEEP_RECENT_COUNT - 1 - i) % SLEEP_RECENT_COUNT;
@@ -14,13 +14,13 @@ bool CrossPointState::isRecentSleep(uint16_t idx, uint8_t checkCount) const {
   return false;
 }
 
-void CrossPointState::pushRecentSleep(uint16_t idx) {
+void AlmanacState::pushRecentSleep(uint16_t idx) {
   recentSleepImages[recentSleepPos] = idx;
   recentSleepPos = (recentSleepPos + 1) % SLEEP_RECENT_COUNT;
   if (recentSleepFill < SLEEP_RECENT_COUNT) recentSleepFill++;
 }
 
-void CrossPointState::toJson(JsonDocument& doc) const {
+void AlmanacState::toJson(JsonDocument& doc) const {
   doc["openEpubPath"] = openEpubPath;
   JsonArray recentArr = doc["recentSleepImages"].to<JsonArray>();
   for (int i = 0; i < SLEEP_RECENT_COUNT; i++) recentArr.add(recentSleepImages[i]);
@@ -31,7 +31,7 @@ void CrossPointState::toJson(JsonDocument& doc) const {
   doc["showBootScreen"] = showBootScreen;
 }
 
-bool CrossPointState::fromJson(JsonVariantConst doc) {
+bool AlmanacState::fromJson(JsonVariantConst doc) {
   openEpubPath = doc["openEpubPath"] | "";
   memset(recentSleepImages, 0, sizeof(recentSleepImages));
   JsonArrayConst recentArr = doc["recentSleepImages"];

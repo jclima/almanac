@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-#include "CrossPointSettings.h"
+#include "AlmanacSettings.h"
 #include "KOReaderCredentialStore.h"
 #include "ReaderFontSizes.h"
 #include "activities/settings/SettingsActivity.h"
@@ -26,7 +26,7 @@ inline SettingInfo buildFontFamilySetting(const SdCardFontRegistry* registry) {
   // Runtime string labels for SD card fonts
   std::vector<std::string> enumStringValues;
 
-  // Reserve: first CrossPointSettings::BUILTIN_FONT_COUNT entries use StrId, rest use strings
+  // Reserve: first AlmanacSettings::BUILTIN_FONT_COUNT entries use StrId, rest use strings
   if (registry) {
     const auto& families = registry->getFamilies();
     enumStringValues.reserve(families.size());
@@ -71,20 +71,20 @@ inline SettingInfo buildFontFamilySetting(const SdCardFontRegistry* registry) {
     if (SETTINGS.sdFontFamilyName[0] != '\0') {
       for (int i = 0; i < static_cast<int>(sdFamilyNames.size()); i++) {
         if (sdFamilyNames[i] == SETTINGS.sdFontFamilyName) {
-          return static_cast<uint8_t>(CrossPointSettings::BUILTIN_FONT_COUNT + i);
+          return static_cast<uint8_t>(AlmanacSettings::BUILTIN_FONT_COUNT + i);
         }
       }
       // SD font name not found in registry — fall through to built-in
     }
-    return SETTINGS.fontFamily < CrossPointSettings::BUILTIN_FONT_COUNT ? SETTINGS.fontFamily : 0;
+    return SETTINGS.fontFamily < AlmanacSettings::BUILTIN_FONT_COUNT ? SETTINGS.fontFamily : 0;
   };
 
   s.valueSetter = [sdFamilyNames](uint8_t v) {
-    if (v < CrossPointSettings::BUILTIN_FONT_COUNT) {
+    if (v < AlmanacSettings::BUILTIN_FONT_COUNT) {
       SETTINGS.fontFamily = v;
       SETTINGS.sdFontFamilyName[0] = '\0';
     } else {
-      int sdIdx = v - CrossPointSettings::BUILTIN_FONT_COUNT;
+      int sdIdx = v - AlmanacSettings::BUILTIN_FONT_COUNT;
       if (sdIdx < static_cast<int>(sdFamilyNames.size())) {
         strncpy(SETTINGS.sdFontFamilyName, sdFamilyNames[sdIdx].c_str(), sizeof(SETTINGS.sdFontFamilyName) - 1);
         SETTINGS.sdFontFamilyName[sizeof(SETTINGS.sdFontFamilyName) - 1] = '\0';
@@ -98,7 +98,7 @@ inline SettingInfo buildFontFamilySetting(const SdCardFontRegistry* registry) {
 // Build the font size setting dynamically: the options are the point sizes the
 // active family actually ships, so an SD family built at 10/12/14 offers three
 // sizes and a family built at 8..18 offers six. The selected point size persists
-// in SETTINGS.fontPointSize (saved/loaded manually in CrossPointSettings::
+// in SETTINGS.fontPointSize (saved/loaded manually in AlmanacSettings::
 // toJson/fromJson — the generic loop skips dynamic entries), while the ENUM
 // contract shared with the web UI stays index-based.
 inline SettingInfo buildFontSizeSetting(const SdCardFontRegistry* registry) {
@@ -140,7 +140,7 @@ inline SettingInfo buildFontSizeSetting(const SdCardFontRegistry* registry) {
 // Build the dictionary selection setting dynamically from the folders discovered
 // under /dictionaries. "None" plus one option per dictionary; the selected folder
 // name persists in SETTINGS.dictionaryName (saved/loaded manually in
-// CrossPointSettings::toJson/fromJson — the generic loop skips dynamic entries).
+// AlmanacSettings::toJson/fromJson — the generic loop skips dynamic entries).
 inline SettingInfo buildDictionarySetting(const std::vector<DictionaryEntry>& dictionaries) {
   std::vector<std::string> folderNames;
   folderNames.reserve(dictionaries.size());
@@ -193,125 +193,128 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
   static const std::vector<SettingInfo> baseList = [] {
     // Enum settings are persisted as numeric values. Assign these labels by enum
     // value so a reordered menu or enum cannot silently swap their behavior.
-    std::vector<StrId> sleepScreenValues(CrossPointSettings::SLEEP_SCREEN_MODE_COUNT);
-    sleepScreenValues[CrossPointSettings::DARK] = StrId::STR_DARK;
-    sleepScreenValues[CrossPointSettings::LIGHT] = StrId::STR_LIGHT;
-    sleepScreenValues[CrossPointSettings::CUSTOM] = StrId::STR_CUSTOM;
-    sleepScreenValues[CrossPointSettings::COVER] = StrId::STR_COVER;
-    sleepScreenValues[CrossPointSettings::COVER_CUSTOM] = StrId::STR_COVER_CUSTOM;
-    sleepScreenValues[CrossPointSettings::BLANK] = StrId::STR_NONE_OPT;
-    sleepScreenValues[CrossPointSettings::QUICK_RESUME] = StrId::STR_QUICK_RESUME;
+    std::vector<StrId> sleepScreenValues(AlmanacSettings::SLEEP_SCREEN_MODE_COUNT);
+    sleepScreenValues[AlmanacSettings::DARK] = StrId::STR_DARK;
+    sleepScreenValues[AlmanacSettings::LIGHT] = StrId::STR_LIGHT;
+    sleepScreenValues[AlmanacSettings::CUSTOM] = StrId::STR_CUSTOM;
+    sleepScreenValues[AlmanacSettings::COVER] = StrId::STR_COVER;
+    sleepScreenValues[AlmanacSettings::COVER_CUSTOM] = StrId::STR_COVER_CUSTOM;
+    sleepScreenValues[AlmanacSettings::BLANK] = StrId::STR_NONE_OPT;
+    sleepScreenValues[AlmanacSettings::QUICK_RESUME] = StrId::STR_QUICK_RESUME;
 
-    std::vector<StrId> statusBarClockValues(CrossPointSettings::STATUS_BAR_CLOCK_MODE_COUNT);
-    statusBarClockValues[CrossPointSettings::STATUS_BAR_CLOCK_HIDE] = StrId::STR_HIDE;
-    statusBarClockValues[CrossPointSettings::STATUS_BAR_CLOCK_RIGHT] = StrId::STR_DIR_RIGHT;
-    statusBarClockValues[CrossPointSettings::STATUS_BAR_CLOCK_LEFT] = StrId::STR_DIR_LEFT;
+    std::vector<StrId> statusBarClockValues(AlmanacSettings::STATUS_BAR_CLOCK_MODE_COUNT);
+    statusBarClockValues[AlmanacSettings::STATUS_BAR_CLOCK_HIDE] = StrId::STR_HIDE;
+    statusBarClockValues[AlmanacSettings::STATUS_BAR_CLOCK_RIGHT] = StrId::STR_DIR_RIGHT;
+    statusBarClockValues[AlmanacSettings::STATUS_BAR_CLOCK_LEFT] = StrId::STR_DIR_LEFT;
 
     std::vector<SettingInfo> v = {
         // --- Display ---
-        SettingInfo::Enum(StrId::STR_SLEEP_SCREEN, &CrossPointSettings::sleepScreen, std::move(sleepScreenValues),
+        SettingInfo::Enum(StrId::STR_SLEEP_SCREEN, &AlmanacSettings::sleepScreen, std::move(sleepScreenValues),
                           "sleepScreen", StrId::STR_CAT_DISPLAY),
-        SettingInfo::Enum(StrId::STR_SLEEP_COVER_MODE, &CrossPointSettings::sleepScreenCoverMode,
+        SettingInfo::Enum(StrId::STR_SLEEP_COVER_MODE, &AlmanacSettings::sleepScreenCoverMode,
                           {StrId::STR_FIT, StrId::STR_CROP}, "sleepScreenCoverMode", StrId::STR_CAT_DISPLAY),
-        SettingInfo::Enum(StrId::STR_SLEEP_COVER_FILTER, &CrossPointSettings::sleepScreenCoverFilter,
+        SettingInfo::Enum(StrId::STR_SLEEP_COVER_FILTER, &AlmanacSettings::sleepScreenCoverFilter,
                           {StrId::STR_NONE_OPT, StrId::STR_FILTER_CONTRAST, StrId::STR_INVERTED},
                           "sleepScreenCoverFilter", StrId::STR_CAT_DISPLAY),
-        SettingInfo::Enum(StrId::STR_QUICK_RESUME_TIMEOUT, &CrossPointSettings::quickResumeSleepScreen,
+        SettingInfo::Enum(StrId::STR_QUICK_RESUME_TIMEOUT, &AlmanacSettings::quickResumeSleepScreen,
                           {StrId::STR_STATE_OFF, StrId::STR_STATE_ON}, "quickResumeSleepScreen",
                           StrId::STR_CAT_DISPLAY),
-        SettingInfo::Enum(StrId::STR_HIDE_BATTERY, &CrossPointSettings::hideBatteryPercentage,
+        SettingInfo::Enum(StrId::STR_HIDE_BATTERY, &AlmanacSettings::hideBatteryPercentage,
                           {StrId::STR_NEVER, StrId::STR_IN_READER, StrId::STR_ALWAYS}, "hideBatteryPercentage",
                           StrId::STR_CAT_DISPLAY),
         SettingInfo::Enum(
-            StrId::STR_REFRESH_FREQ, &CrossPointSettings::refreshFrequency,
+            StrId::STR_REFRESH_FREQ, &AlmanacSettings::refreshFrequency,
             {StrId::STR_PAGES_1, StrId::STR_PAGES_5, StrId::STR_PAGES_10, StrId::STR_PAGES_15, StrId::STR_PAGES_30},
             "refreshFrequency", StrId::STR_CAT_DISPLAY),
-        SettingInfo::Enum(StrId::STR_UI_THEME, &CrossPointSettings::uiTheme,
+        // This list is POSITIONAL: index N must be the display name of
+        // UI_THEME value N, and fromJson clamps ENUM settings to
+        // enumValues.size(). Adding a theme to the enum without appending its
+        // name here makes the clamp silently reset the setting on every load.
+        SettingInfo::Enum(StrId::STR_UI_THEME, &AlmanacSettings::uiTheme,
                           {StrId::STR_THEME_CLASSIC, StrId::STR_THEME_LYRA, StrId::STR_THEME_LYRA_EXTENDED,
                            StrId::STR_THEME_ROUNDEDRAFF, StrId::STR_THEME_ALMANAC},
                           "uiTheme", StrId::STR_CAT_DISPLAY),
-        SettingInfo::Toggle(StrId::STR_SUNLIGHT_FADING_FIX, &CrossPointSettings::fadingFix, "fadingFix",
+        SettingInfo::Toggle(StrId::STR_SUNLIGHT_FADING_FIX, &AlmanacSettings::fadingFix, "fadingFix",
                             StrId::STR_CAT_DISPLAY),
 
         // --- Reader ---
         // Built-in font-family entry. Replaced per-call with a registry-aware
         // version when SD fonts are installed.
-        SettingInfo::Enum(StrId::STR_FONT_FAMILY, &CrossPointSettings::fontFamily,
+        SettingInfo::Enum(StrId::STR_FONT_FAMILY, &AlmanacSettings::fontFamily,
                           {StrId::STR_NOTO_SERIF, StrId::STR_NOTO_SANS}, "fontFamily", StrId::STR_CAT_READER)
             .withTextSettings(),
         // Placeholder: the selectable sizes depend on the active font family, so
         // this entry is always replaced by buildFontSizeSetting() below. It only
         // fixes the setting's position in the Reader category.
         SettingInfo::Enum(StrId::STR_FONT_SIZE, nullptr, {}, "fontSize", StrId::STR_CAT_READER).withTextSettings(),
-        SettingInfo::Enum(StrId::STR_LINE_SPACING, &CrossPointSettings::lineSpacing,
+        SettingInfo::Enum(StrId::STR_LINE_SPACING, &AlmanacSettings::lineSpacing,
                           {StrId::STR_TIGHT, StrId::STR_NORMAL, StrId::STR_WIDE}, "lineSpacing", StrId::STR_CAT_READER)
             .withTextSettings(),
-        SettingInfo::Value(StrId::STR_SCREEN_MARGIN, &CrossPointSettings::screenMargin,
-                           {CrossPointSettings::SCREEN_MARGIN_MIN, CrossPointSettings::SCREEN_MARGIN_MAX,
-                            CrossPointSettings::SCREEN_MARGIN_STEP},
+        SettingInfo::Value(StrId::STR_SCREEN_MARGIN, &AlmanacSettings::screenMargin,
+                           {AlmanacSettings::SCREEN_MARGIN_MIN, AlmanacSettings::SCREEN_MARGIN_MAX,
+                            AlmanacSettings::SCREEN_MARGIN_STEP},
                            "screenMargin", StrId::STR_CAT_READER)
             .withTextSettings(),
-        SettingInfo::Enum(StrId::STR_PARA_ALIGNMENT, &CrossPointSettings::paragraphAlignment,
+        SettingInfo::Enum(StrId::STR_PARA_ALIGNMENT, &AlmanacSettings::paragraphAlignment,
                           {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
                            StrId::STR_BOOK_S_STYLE},
                           "paragraphAlignment", StrId::STR_CAT_READER)
             .withTextSettings(),
-        SettingInfo::Toggle(StrId::STR_EMBEDDED_STYLE, &CrossPointSettings::embeddedStyle, "embeddedStyle",
+        SettingInfo::Toggle(StrId::STR_EMBEDDED_STYLE, &AlmanacSettings::embeddedStyle, "embeddedStyle",
                             StrId::STR_CAT_READER)
             .withTextSettings(),
-        SettingInfo::Toggle(StrId::STR_FOCUS_READING, &CrossPointSettings::focusReadingEnabled, "focusReadingEnabled",
+        SettingInfo::Toggle(StrId::STR_FOCUS_READING, &AlmanacSettings::focusReadingEnabled, "focusReadingEnabled",
                             StrId::STR_CAT_READER)
             .withTextSettings(),
-        SettingInfo::Toggle(StrId::STR_HYPHENATION, &CrossPointSettings::hyphenationEnabled, "hyphenationEnabled",
+        SettingInfo::Toggle(StrId::STR_HYPHENATION, &AlmanacSettings::hyphenationEnabled, "hyphenationEnabled",
                             StrId::STR_CAT_READER)
             .withTextSettings(),
         SettingInfo::Enum(
-            StrId::STR_ORIENTATION, &CrossPointSettings::orientation,
+            StrId::STR_ORIENTATION, &AlmanacSettings::orientation,
             {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW, StrId::STR_ORIENTATION_INVERTED, StrId::STR_LANDSCAPE_CCW},
             "orientation", StrId::STR_CAT_READER),
-        SettingInfo::Toggle(StrId::STR_EXTRA_SPACING, &CrossPointSettings::extraParagraphSpacing,
-                            "extraParagraphSpacing", StrId::STR_CAT_READER)
-            .withTextSettings(),
-        SettingInfo::Toggle(StrId::STR_TEXT_AA, &CrossPointSettings::textAntiAliasing, "textAntiAliasing",
+        SettingInfo::Toggle(StrId::STR_EXTRA_SPACING, &AlmanacSettings::extraParagraphSpacing, "extraParagraphSpacing",
                             StrId::STR_CAT_READER)
             .withTextSettings(),
-        SettingInfo::Enum(StrId::STR_IMAGES, &CrossPointSettings::imageRendering,
+        SettingInfo::Toggle(StrId::STR_TEXT_AA, &AlmanacSettings::textAntiAliasing, "textAntiAliasing",
+                            StrId::STR_CAT_READER)
+            .withTextSettings(),
+        SettingInfo::Enum(StrId::STR_IMAGES, &AlmanacSettings::imageRendering,
                           {StrId::STR_IMAGES_DISPLAY, StrId::STR_IMAGES_PLACEHOLDER, StrId::STR_IMAGES_SUPPRESS},
                           "imageRendering", StrId::STR_CAT_READER),
         // --- Controls ---
-        SettingInfo::Enum(StrId::STR_SIDE_BTN_LAYOUT, &CrossPointSettings::sideButtonLayout,
+        SettingInfo::Enum(StrId::STR_SIDE_BTN_LAYOUT, &AlmanacSettings::sideButtonLayout,
                           {StrId::STR_PREV_NEXT, StrId::STR_NEXT_PREV, StrId::STR_DISABLED}, "sideButtonLayout",
                           StrId::STR_CAT_CONTROLS),
-        SettingInfo::Enum(StrId::STR_TOUCH_READER_CONTROLS, &CrossPointSettings::touchReaderControls,
+        SettingInfo::Enum(StrId::STR_TOUCH_READER_CONTROLS, &AlmanacSettings::touchReaderControls,
                           {StrId::STR_STATE_OFF, StrId::STR_STATE_ON}, "touchReaderControls", StrId::STR_CAT_CONTROLS),
-        SettingInfo::Toggle(StrId::STR_FRONT_BTN_FOLLOW_ORIENTATION, &CrossPointSettings::frontButtonFollowOrientation,
+        SettingInfo::Toggle(StrId::STR_FRONT_BTN_FOLLOW_ORIENTATION, &AlmanacSettings::frontButtonFollowOrientation,
                             "frontButtonFollowOrientation", StrId::STR_CAT_CONTROLS),
-        SettingInfo::Enum(StrId::STR_LONG_PRESS_BEHAVIOR, &CrossPointSettings::longPressButtonBehavior,
+        SettingInfo::Enum(StrId::STR_LONG_PRESS_BEHAVIOR, &AlmanacSettings::longPressButtonBehavior,
                           {StrId::STR_LONG_PRESS_BEHAVIOR_OFF, StrId::STR_LONG_PRESS_BEHAVIOR_SKIP,
                            StrId::STR_LONG_PRESS_BEHAVIOR_ORIENTATION},
                           "longPressButtonBehavior", StrId::STR_CAT_CONTROLS),
-        SettingInfo::Enum(StrId::STR_LONG_PRESS_MENU, &CrossPointSettings::longPressMenuFunction,
+        SettingInfo::Enum(StrId::STR_LONG_PRESS_MENU, &AlmanacSettings::longPressMenuFunction,
                           {StrId::STR_KOSYNC, StrId::STR_DISABLED, StrId::STR_BOOKMARK_OPTION, StrId::STR_DICTIONARY},
                           "longPressMenuFunction", StrId::STR_CAT_CONTROLS),
         SettingInfo::Enum(
-            StrId::STR_SHORT_PWR_BTN, &CrossPointSettings::shortPwrBtn,
+            StrId::STR_SHORT_PWR_BTN, &AlmanacSettings::shortPwrBtn,
             {StrId::STR_IGNORE, StrId::STR_SLEEP, StrId::STR_PAGE_TURN, StrId::STR_FORCE_REFRESH, StrId::STR_FOOTNOTES},
             "shortPwrBtn", StrId::STR_CAT_CONTROLS),
-        SettingInfo::Toggle(StrId::STR_PWR_BTN_FOOTNOTE_BACK, &CrossPointSettings::pwrBtnFootnoteBack,
+        SettingInfo::Toggle(StrId::STR_PWR_BTN_FOOTNOTE_BACK, &AlmanacSettings::pwrBtnFootnoteBack,
                             "pwrBtnFootnoteBack", StrId::STR_CAT_CONTROLS),
-        SettingInfo::Toggle(StrId::STR_BACK_SHORT_TO_FILE_BROWSER, &CrossPointSettings::backShortToFileBrowser,
+        SettingInfo::Toggle(StrId::STR_BACK_SHORT_TO_FILE_BROWSER, &AlmanacSettings::backShortToFileBrowser,
                             "backShortToFileBrowser", StrId::STR_CAT_CONTROLS),
 
         // --- System ---
-        SettingInfo::Value(
-            StrId::STR_TIME_TO_SLEEP, &CrossPointSettings::sleepTimeoutMinutes,
-            {CrossPointSettings::MIN_SLEEP_TIMEOUT_MINUTES, CrossPointSettings::MAX_SLEEP_TIMEOUT_MINUTES, 1},
-            "sleepTimeoutMinutes", StrId::STR_CAT_SYSTEM),
-        SettingInfo::Toggle(StrId::STR_SHOW_HIDDEN_FILES, &CrossPointSettings::showHiddenFiles, "showHiddenFiles",
+        SettingInfo::Value(StrId::STR_TIME_TO_SLEEP, &AlmanacSettings::sleepTimeoutMinutes,
+                           {AlmanacSettings::MIN_SLEEP_TIMEOUT_MINUTES, AlmanacSettings::MAX_SLEEP_TIMEOUT_MINUTES, 1},
+                           "sleepTimeoutMinutes", StrId::STR_CAT_SYSTEM),
+        SettingInfo::Toggle(StrId::STR_SHOW_HIDDEN_FILES, &AlmanacSettings::showHiddenFiles, "showHiddenFiles",
                             StrId::STR_CAT_SYSTEM),
-        SettingInfo::Toggle(StrId::STR_REMOVE_READ_FROM_RECENTS, &CrossPointSettings::removeReadBooksFromRecents,
+        SettingInfo::Toggle(StrId::STR_REMOVE_READ_FROM_RECENTS, &AlmanacSettings::removeReadBooksFromRecents,
                             "removeReadBooksFromRecents", StrId::STR_CAT_SYSTEM),
-        SettingInfo::Toggle(StrId::STR_MOVE_FINISHED_TO_READ, &CrossPointSettings::moveFinishedToReadFolder,
+        SettingInfo::Toggle(StrId::STR_MOVE_FINISHED_TO_READ, &AlmanacSettings::moveFinishedToReadFolder,
                             "moveFinishedToReadFolder", StrId::STR_CAT_SYSTEM),
 
         // OPDS download folder: persisted + web-exposed, but category-less so it
@@ -325,14 +328,13 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
                             sizeof(SETTINGS.flightTrackerHomeLat), "flightTrackerHomeLat"),
         SettingInfo::String(StrId::STR_FLIGHT_TRACKER_HOME_LON, &SETTINGS.flightTrackerHomeLon[0],
                             sizeof(SETTINGS.flightTrackerHomeLon), "flightTrackerHomeLon"),
-        SettingInfo::Value(
-            StrId::STR_FLIGHT_TRACKER_RADIUS, &CrossPointSettings::flightTrackerRadiusMiles,
-            {CrossPointSettings::FLIGHT_TRACKER_RADIUS_MIN, CrossPointSettings::FLIGHT_TRACKER_RADIUS_MAX,
-             CrossPointSettings::FLIGHT_TRACKER_RADIUS_STEP},
-            "flightTrackerRadiusMiles"),
+        SettingInfo::Value(StrId::STR_FLIGHT_TRACKER_RADIUS, &AlmanacSettings::flightTrackerRadiusMiles,
+                           {AlmanacSettings::FLIGHT_TRACKER_RADIUS_MIN, AlmanacSettings::FLIGHT_TRACKER_RADIUS_MAX,
+                            AlmanacSettings::FLIGHT_TRACKER_RADIUS_STEP},
+                           "flightTrackerRadiusMiles"),
         // OPDS download filename format: persisted + web-exposed, category-less so it
         // is hidden from the on-device Settings screen (cycled from the OPDS UI).
-        SettingInfo::Enum(StrId::STR_OPDS_FILENAME_FORMAT, &CrossPointSettings::opdsFilenameFormat,
+        SettingInfo::Enum(StrId::STR_OPDS_FILENAME_FORMAT, &AlmanacSettings::opdsFilenameFormat,
                           {StrId::STR_FMT_AUTHOR_TITLE, StrId::STR_FMT_TITLE_AUTHOR, StrId::STR_FMT_TITLE},
                           "opdsFilenameFormat"),
 
@@ -383,36 +385,36 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
             },
             "koSyncBehavior", StrId::STR_KOREADER_SYNC),
         // --- Status Bar Settings (web-only, uses StatusBarSettingsActivity) ---
-        SettingInfo::Toggle(StrId::STR_CHAPTER_PAGE_COUNT, &CrossPointSettings::statusBarChapterPageCount,
+        SettingInfo::Toggle(StrId::STR_CHAPTER_PAGE_COUNT, &AlmanacSettings::statusBarChapterPageCount,
                             "statusBarChapterPageCount", StrId::STR_CUSTOMISE_STATUS_BAR),
-        SettingInfo::Toggle(StrId::STR_BOOK_PROGRESS_PERCENTAGE, &CrossPointSettings::statusBarBookProgressPercentage,
+        SettingInfo::Toggle(StrId::STR_BOOK_PROGRESS_PERCENTAGE, &AlmanacSettings::statusBarBookProgressPercentage,
                             "statusBarBookProgressPercentage", StrId::STR_CUSTOMISE_STATUS_BAR),
-        SettingInfo::Enum(StrId::STR_PROGRESS_BAR, &CrossPointSettings::statusBarProgressBar,
+        SettingInfo::Enum(StrId::STR_PROGRESS_BAR, &AlmanacSettings::statusBarProgressBar,
                           {StrId::STR_BOOK, StrId::STR_CHAPTER, StrId::STR_HIDE}, "statusBarProgressBar",
                           StrId::STR_CUSTOMISE_STATUS_BAR),
-        SettingInfo::Enum(StrId::STR_PROGRESS_BAR_THICKNESS, &CrossPointSettings::statusBarProgressBarThickness,
+        SettingInfo::Enum(StrId::STR_PROGRESS_BAR_THICKNESS, &AlmanacSettings::statusBarProgressBarThickness,
                           {StrId::STR_PROGRESS_BAR_THIN, StrId::STR_PROGRESS_BAR_MEDIUM, StrId::STR_PROGRESS_BAR_THICK},
                           "statusBarProgressBarThickness", StrId::STR_CUSTOMISE_STATUS_BAR),
-        SettingInfo::Enum(StrId::STR_TITLE, &CrossPointSettings::statusBarTitle,
+        SettingInfo::Enum(StrId::STR_TITLE, &AlmanacSettings::statusBarTitle,
                           {StrId::STR_BOOK, StrId::STR_CHAPTER, StrId::STR_HIDE}, "statusBarTitle",
                           StrId::STR_CUSTOMISE_STATUS_BAR),
-        SettingInfo::Toggle(StrId::STR_BATTERY, &CrossPointSettings::statusBarBattery, "statusBarBattery",
+        SettingInfo::Toggle(StrId::STR_BATTERY, &AlmanacSettings::statusBarBattery, "statusBarBattery",
                             StrId::STR_CUSTOMISE_STATUS_BAR),
-        SettingInfo::Enum(StrId::STR_XTC_STATUS_BAR, &CrossPointSettings::xtcStatusBarMode,
+        SettingInfo::Enum(StrId::STR_XTC_STATUS_BAR, &AlmanacSettings::xtcStatusBarMode,
                           {StrId::STR_HIDE, StrId::STR_BOTTOM, StrId::STR_TOP}, "xtcStatusBarMode",
                           StrId::STR_CUSTOMISE_STATUS_BAR),
         // Clock entries (web settings only; device UI uses ClockOffsetActivity for the offset).
         // Range 0..104 = quarter-hour steps from UTC-12:00 to UTC+14:00, biased by 48.
-        SettingInfo::Enum(StrId::STR_CLOCK, &CrossPointSettings::statusBarClock, std::move(statusBarClockValues),
+        SettingInfo::Enum(StrId::STR_CLOCK, &AlmanacSettings::statusBarClock, std::move(statusBarClockValues),
                           "statusBarClock", StrId::STR_CUSTOMISE_STATUS_BAR),
-        SettingInfo::Value(StrId::STR_CLOCK_UTC_OFFSET, &CrossPointSettings::clockUtcOffsetQ, {0, 104, 1},
+        SettingInfo::Value(StrId::STR_CLOCK_UTC_OFFSET, &AlmanacSettings::clockUtcOffsetQ, {0, 104, 1},
                            "clockUtcOffsetQ", StrId::STR_CUSTOMISE_STATUS_BAR),
-        SettingInfo::Enum(StrId::STR_CLOCK_FORMAT, &CrossPointSettings::clockFormat,
+        SettingInfo::Enum(StrId::STR_CLOCK_FORMAT, &AlmanacSettings::clockFormat,
                           {StrId::STR_CLOCK_FORMAT_24H, StrId::STR_CLOCK_FORMAT_12H}, "clockFormat",
                           StrId::STR_CUSTOMISE_STATUS_BAR),
         // Persistence flag for NTP debounce. Resetting from the web UI forces a re-sync
         // on next WiFi connect, which is useful when crossing time zones.
-        SettingInfo::Toggle(StrId::STR_CLOCK_SYNCED, &CrossPointSettings::clockHasBeenSynced, "clockHasBeenSynced",
+        SettingInfo::Toggle(StrId::STR_CLOCK_SYNCED, &AlmanacSettings::clockHasBeenSynced, "clockHasBeenSynced",
                             StrId::STR_CUSTOMISE_STATUS_BAR),
     };
     // Only show tilt page turn setting when the QMI8658 IMU is present (X3)
@@ -420,7 +422,7 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
       // Insert after the short power button setting (end of Controls section)
       for (auto it = v.begin(); it != v.end(); ++it) {
         if (it->nameId == StrId::STR_SHORT_PWR_BTN) {
-          v.insert(it + 1, SettingInfo::Enum(StrId::STR_TILT_PAGE_TURN, &CrossPointSettings::tiltPageTurn,
+          v.insert(it + 1, SettingInfo::Enum(StrId::STR_TILT_PAGE_TURN, &AlmanacSettings::tiltPageTurn,
                                              {StrId::STR_STATE_OFF, StrId::STR_NORMAL, StrId::STR_INVERTED},
                                              "tiltPageTurn", StrId::STR_CAT_CONTROLS));
           break;

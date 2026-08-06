@@ -17,9 +17,9 @@
 #include <limits>
 
 #include "../../util/BookmarkFile.h"
+#include "AlmanacSettings.h"
+#include "AlmanacState.h"
 #include "BookmarkEntry.h"
-#include "CrossPointSettings.h"
-#include "CrossPointState.h"
 #include "DictionaryWordSelectActivity.h"
 #include "EpubReaderBookmarksActivity.h"
 #include "EpubReaderChapterSelectionActivity.h"
@@ -529,7 +529,7 @@ void EpubReaderActivity::loop() {
   // Long-press Confirm runs the user-selected function (SETTINGS.longPressMenuFunction).
   if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
     switch (SETTINGS.longPressMenuFunction) {
-      case CrossPointSettings::LP_MENU_BOOKMARK:
+      case AlmanacSettings::LP_MENU_BOOKMARK:
         // Hold ~0.4s drops a bookmark at the current page.
         if (mappedInput.getHeldTime() >= ReaderUtils::BOOKMARK_HOLD_MS && !showBookmarkMessage) {
           addBookmark();
@@ -539,7 +539,7 @@ void EpubReaderActivity::loop() {
           requestUpdate();
         }
         break;
-      case CrossPointSettings::LP_MENU_KOSYNC:
+      case AlmanacSettings::LP_MENU_KOSYNC:
         // Hold ~1s launches KOReader sync. If sync can't run (no credentials stored), fall
         // through so the normal Confirm-release still opens the reader menu.
         if (mappedInput.getHeldTime() >= ReaderUtils::GO_HOME_MS) {
@@ -549,7 +549,7 @@ void EpubReaderActivity::loop() {
           }
         }
         break;
-      case CrossPointSettings::LP_MENU_DICTIONARY:
+      case AlmanacSettings::LP_MENU_DICTIONARY:
         // Hold ~0.4s starts dictionary word selection on the current page.
         if (mappedInput.getHeldTime() >= ReaderUtils::BOOKMARK_HOLD_MS && !showDictionaryMessage) {
           ignoreNextConfirmRelease = true;  // Prevent menu open on the release that follows
@@ -557,7 +557,7 @@ void EpubReaderActivity::loop() {
           return;
         }
         break;
-      case CrossPointSettings::LP_MENU_DISABLED:
+      case AlmanacSettings::LP_MENU_DISABLED:
       default:
         break;
     }
@@ -578,7 +578,7 @@ void EpubReaderActivity::loop() {
   // auto [prevTriggered, nextTriggered] = ReaderUtils::detectPageTurn(mappedInput);
 
   // Handle short power button press for footnotes
-  if (SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::FOOTNOTES &&
+  if (SETTINGS.shortPwrBtn == AlmanacSettings::SHORT_PWRBTN::FOOTNOTES &&
       mappedInput.wasReleased(MappedInputManager::Button::Power) &&
       !mappedInput.wasReleased(MappedInputManager::Button::Down)) {
     if (footnoteDepth > 0) {
@@ -1870,7 +1870,7 @@ void EpubReaderActivity::renderStatusBar() const {
       textYOffset += UITheme::getInstance().getMetrics().statusBarVerticalMargin;
     }
 
-  } else if (sb.titleMode == CrossPointSettings::STATUS_BAR_TITLE::CHAPTER_TITLE) {
+  } else if (sb.titleMode == AlmanacSettings::STATUS_BAR_TITLE::CHAPTER_TITLE) {
     title = tr(STR_UNNAMED);
     const int tocIndex = epub->getTocIndexForSpineIndex(currentSpineIndex);
     if (tocIndex != -1) {
@@ -1878,7 +1878,7 @@ void EpubReaderActivity::renderStatusBar() const {
       title = tocItem.title;
     }
 
-  } else if (sb.titleMode == CrossPointSettings::STATUS_BAR_TITLE::BOOK_TITLE) {
+  } else if (sb.titleMode == AlmanacSettings::STATUS_BAR_TITLE::BOOK_TITLE) {
     title = epub->getTitle();
   }
 

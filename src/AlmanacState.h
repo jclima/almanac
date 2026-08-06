@@ -5,10 +5,10 @@
 #include <cstdint>
 #include <string>
 
-class CrossPointState : public PersistableStore<CrossPointState> {
-  CrossPointState() = default;
+class AlmanacState : public PersistableStore<AlmanacState> {
+  AlmanacState() = default;
 
-  friend class PersistableStore<CrossPointState>;
+  friend class PersistableStore<AlmanacState>;
 
  public:
   static constexpr uint8_t SLEEP_RECENT_COUNT = 16;
@@ -33,4 +33,4 @@ class CrossPointState : public PersistableStore<CrossPointState> {
 };
 
 // Helper macro to access state
-#define APP_STATE CrossPointState::getInstance()
+#define APP_STATE AlmanacState::getInstance()

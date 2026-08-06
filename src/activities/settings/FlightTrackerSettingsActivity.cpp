@@ -9,7 +9,7 @@
 #include <cstdlib>
 #include <cstring>
 
-#include "CrossPointSettings.h"
+#include "AlmanacSettings.h"
 #include "MappedInputManager.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
@@ -125,14 +125,14 @@ void FlightTrackerSettingsActivity::handleSelection() {
 
   // Search radius: tap cycles through the allowed range. `next` is int (not
   // uint8_t) purely as a defensive habit, not because it's load-bearing here:
-  // CrossPointSettings::fromJson() already clamps every SettingType::VALUE
+  // AlmanacSettings::fromJson() already clamps every SettingType::VALUE
   // field -- including this one -- to [min,max] on load (see
-  // CrossPointSettings.cpp:159-164), so flightTrackerRadiusMiles can never
+  // AlmanacSettings.cpp:159-164), so flightTrackerRadiusMiles can never
   // actually reach this point above MAX. The int widening is harmless and
   // guards against that invariant changing later.
-  const int next = static_cast<int>(SETTINGS.flightTrackerRadiusMiles) + CrossPointSettings::FLIGHT_TRACKER_RADIUS_STEP;
-  SETTINGS.flightTrackerRadiusMiles = next > CrossPointSettings::FLIGHT_TRACKER_RADIUS_MAX
-                                          ? CrossPointSettings::FLIGHT_TRACKER_RADIUS_MIN
+  const int next = static_cast<int>(SETTINGS.flightTrackerRadiusMiles) + AlmanacSettings::FLIGHT_TRACKER_RADIUS_STEP;
+  SETTINGS.flightTrackerRadiusMiles = next > AlmanacSettings::FLIGHT_TRACKER_RADIUS_MAX
+                                          ? AlmanacSettings::FLIGHT_TRACKER_RADIUS_MIN
                                           : static_cast<uint8_t>(next);
   SETTINGS.saveToFile();
   requestUpdate();

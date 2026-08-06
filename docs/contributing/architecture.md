@@ -136,8 +136,8 @@ Notes:
 
 Two singletons are central:
 
-- `src/CrossPointSettings.h` (`SETTINGS`): user preferences and behavior flags
-- `src/CrossPointState.h` (`APP_STATE`): runtime/session state such as current book and sleep context
+- `src/AlmanacSettings.h` (`SETTINGS`): user preferences and behavior flags
+- `src/AlmanacState.h` (`APP_STATE`): runtime/session state such as current book and sleep context
 
 Typical persisted areas on SD:
 
@@ -162,7 +162,7 @@ formats, see `docs/file-formats.md`.
 
 ## Networking architecture
 
-Network file transfer is controlled by `src/activities/network/CrossPointWebServerActivity.h` and served by `src/network/CrossPointWebServer.h`.
+Network file transfer is controlled by `src/activities/network/AlmanacWebServerActivity.h` and served by `src/network/AlmanacWebServer.h`.
 
 Modes:
 
@@ -215,4 +215,3 @@ When editing related source assets, regenerate via normal build steps/scripts.
 Before implementing larger ideas, check:
 
 - [SCOPE.md](../../SCOPE.md)
-- [GOVERNANCE.md](../../GOVERNANCE.md)
