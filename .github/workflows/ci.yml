@@ -2,11 +2,24 @@ name: CI (build)
 
 on:
   push:
-    branches: [master]
+    # This repository's default branch is `develop`; there is no `master`.
+    # Inherited from upstream, where the push trigger named a branch that does
+    # not exist here, so nothing merged to develop was ever built.
+    branches: [develop]
   pull_request:
 
 permissions:
   contents: read
+
+# A force-push (or a quick follow-up commit) otherwise leaves the previous run
+# building the superseded commit for its full ~10 minutes. Only the newest
+# commit on a ref is worth verifying; in-progress runs for older ones are
+# cancelled. Grouped per-ref so develop and each PR are independent, and
+# never cancelling on develop itself, where every merged commit should keep
+# its own result.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/develop' }}
 
 jobs:
   clang-format:
