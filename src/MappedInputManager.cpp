@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <cstdlib>
 
-#include "CrossPointSettings.h"
+#include "AlmanacSettings.h"
 #include "components/UITheme.h"
 
 bool MappedInputManager::isNavDirectionSwapped() const {
@@ -77,22 +77,22 @@ bool MappedInputManager::mapButton(const Button button, bool (HalGPIO::*fn)(uint
     case Button::PageBack:
       // Reader page navigation uses side buttons and can be swapped via settings.
       switch (sideLayout) {
-        case CrossPointSettings::PREV_NEXT:
+        case AlmanacSettings::PREV_NEXT:
           return (gpio.*fn)(HalGPIO::BTN_UP);
-        case CrossPointSettings::NEXT_PREV:
+        case AlmanacSettings::NEXT_PREV:
           return (gpio.*fn)(HalGPIO::BTN_DOWN);
-        case CrossPointSettings::SIDE_BUTTONS_DISABLED:
+        case AlmanacSettings::SIDE_BUTTONS_DISABLED:
         default:
           return false;
       }
     case Button::PageForward:
       // Reader page navigation uses side buttons and can be swapped via settings.
       switch (sideLayout) {
-        case CrossPointSettings::PREV_NEXT:
+        case AlmanacSettings::PREV_NEXT:
           return (gpio.*fn)(HalGPIO::BTN_DOWN);
-        case CrossPointSettings::NEXT_PREV:
+        case AlmanacSettings::NEXT_PREV:
           return (gpio.*fn)(HalGPIO::BTN_UP);
-        case CrossPointSettings::SIDE_BUTTONS_DISABLED:
+        case AlmanacSettings::SIDE_BUTTONS_DISABLED:
         default:
           return false;
       }

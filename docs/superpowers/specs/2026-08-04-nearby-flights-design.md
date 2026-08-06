@@ -125,7 +125,7 @@ States: `CHECK_WIFI, WIFI_SELECTION, LOADING, LIST, DETAIL, ERROR`, following
 `onWifiSelectionComplete` callback pattern for the Wi-Fi flow).
 
 - `onEnter()`: if home location isn't configured
-  (`CrossPointSettings::flightTrackerHomeLat/Lon` unset), skip straight to a
+  (`AlmanacSettings::flightTrackerHomeLat/Lon` unset), skip straight to a
   static message screen ("Set a home location in Settings first") instead of
   `CHECK_WIFI` — no point prompting for Wi-Fi with nowhere to search around.
   Otherwise proceeds through `CHECK_WIFI`/`WIFI_SELECTION` exactly like
@@ -164,7 +164,7 @@ States: `CHECK_WIFI, WIFI_SELECTION, LOADING, LIST, DETAIL, ERROR`, following
 
 ### Settings
 
-New fields on `CrossPointSettings` (`PersistableStore` pattern, JSON-backed
+New fields on `AlmanacSettings` (`PersistableStore` pattern, JSON-backed
 like existing fields):
 
 - `double flightTrackerHomeLat = NAN;`

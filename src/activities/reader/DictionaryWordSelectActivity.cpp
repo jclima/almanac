@@ -10,7 +10,7 @@
 #include <climits>
 #include <cstdlib>
 
-#include "CrossPointSettings.h"
+#include "AlmanacSettings.h"
 #include "DictionaryDefinitionActivity.h"
 #include "components/UITheme.h"
 

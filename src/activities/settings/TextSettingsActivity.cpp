@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-#include "CrossPointSettings.h"
+#include "AlmanacSettings.h"
 #include "MappedInputManager.h"
 #include "ReaderFontSizes.h"
 #include "SdCardFontSystem.h"
@@ -27,20 +27,20 @@ int findCurrentFontIndex(const SdCardFontRegistry* registry, const char* sdFontF
     const auto& families = registry->getFamilies();
     for (int i = 0; i < static_cast<int>(families.size()); i++) {
       if (families[i].name == sdFontFamilyName) {
-        return CrossPointSettings::BUILTIN_FONT_COUNT + i;
+        return AlmanacSettings::BUILTIN_FONT_COUNT + i;
       }
     }
   }
 
-  return fontFamily < CrossPointSettings::BUILTIN_FONT_COUNT ? fontFamily : 0;
+  return fontFamily < AlmanacSettings::BUILTIN_FONT_COUNT ? fontFamily : 0;
 }
 
 constexpr StrId LINE_SPACING_IDS[] = {StrId::STR_TIGHT, StrId::STR_NORMAL, StrId::STR_WIDE};
 constexpr StrId ALIGNMENT_IDS[] = {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
                                    StrId::STR_BOOK_S_STYLE};
-constexpr int MARGIN_MIN = CrossPointSettings::SCREEN_MARGIN_MIN;
-constexpr int MARGIN_MAX = CrossPointSettings::SCREEN_MARGIN_MAX;
-constexpr int MARGIN_STEP = CrossPointSettings::SCREEN_MARGIN_STEP;
+constexpr int MARGIN_MIN = AlmanacSettings::SCREEN_MARGIN_MIN;
+constexpr int MARGIN_MAX = AlmanacSettings::SCREEN_MARGIN_MAX;
+constexpr int MARGIN_STEP = AlmanacSettings::SCREEN_MARGIN_STEP;
 }  // namespace
 
 TextSettingsActivity::TextSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
@@ -57,13 +57,13 @@ void TextSettingsActivity::onEnter() {
   previewHeight = usableHeight * metrics_.previewHeightPercent / 100;
 
   fonts_.clear();
-  fonts_.reserve(CrossPointSettings::BUILTIN_FONT_COUNT + (registry_ ? registry_->getFamilyCount() : 0));
-  fonts_.push_back({I18N.get(StrId::STR_NOTO_SERIF), true, static_cast<uint8_t>(CrossPointSettings::NOTOSERIF)});
-  fonts_.push_back({I18N.get(StrId::STR_NOTO_SANS), true, static_cast<uint8_t>(CrossPointSettings::NOTOSANS)});
+  fonts_.reserve(AlmanacSettings::BUILTIN_FONT_COUNT + (registry_ ? registry_->getFamilyCount() : 0));
+  fonts_.push_back({I18N.get(StrId::STR_NOTO_SERIF), true, static_cast<uint8_t>(AlmanacSettings::NOTOSERIF)});
+  fonts_.push_back({I18N.get(StrId::STR_NOTO_SANS), true, static_cast<uint8_t>(AlmanacSettings::NOTOSANS)});
   if (registry_) {
     const auto& families = registry_->getFamilies();
     for (int i = 0; i < static_cast<int>(families.size()); i++) {
-      fonts_.push_back({families[i].name, false, static_cast<uint8_t>(CrossPointSettings::BUILTIN_FONT_COUNT + i)});
+      fonts_.push_back({families[i].name, false, static_cast<uint8_t>(AlmanacSettings::BUILTIN_FONT_COUNT + i)});
     }
   }
 
@@ -315,7 +315,7 @@ void TextSettingsActivity::applyFamily(int listIndex) {
     sdFontSystem.ensureLoaded(renderer);  // unloads the previously resident SD font
     currentFamilyIndex_ = listIndex;
   } else if (registry_) {
-    const int sdIdx = font.settingIndex - CrossPointSettings::BUILTIN_FONT_COUNT;
+    const int sdIdx = font.settingIndex - AlmanacSettings::BUILTIN_FONT_COUNT;
     const auto& families = registry_->getFamilies();
     if (sdIdx < static_cast<int>(families.size())) {
       strncpy(SETTINGS.sdFontFamilyName, families[sdIdx].name.c_str(), sizeof(SETTINGS.sdFontFamilyName) - 1);

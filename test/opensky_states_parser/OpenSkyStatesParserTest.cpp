@@ -11,9 +11,7 @@ constexpr double HOME_LAT = 37.6213;
 constexpr double HOME_LON = -122.3790;
 constexpr double RADIUS_MILES = 50.0;
 
-void feedAll(OpenSkyStatesParser& parser, const std::string& json) {
-  parser.feed(json.c_str(), json.size());
-}
+void feedAll(OpenSkyStatesParser& parser, const std::string& json) { parser.feed(json.c_str(), json.size()); }
 }  // namespace
 
 TEST(OpenSkyStatesParser, DecodesAMatchingAirborneAircraft) {

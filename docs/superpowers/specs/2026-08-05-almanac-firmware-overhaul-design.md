@@ -105,7 +105,7 @@ check degrades to "No update available", which is the correct outcome.
 ### Deliberately NOT renamed: the `.crosspoint` SD directory
 
 `/.crosspoint/` on the SD card holds book caches, **reading progress**,
-bookmarks, cover bitmaps, and sleep frames (`CrossPointState.h:24`,
+bookmarks, cover bitmaps, and sleep frames (`AlmanacState.h:24`,
 `main.cpp:171`, `BookmarkUtil.cpp:6`, `RecentBooksStore.cpp:127`). Renaming it
 silently orphans every one of those: progress resets to page one and bookmarks
 disappear, because cache identity is a hash of the file path under that root.
@@ -131,7 +131,7 @@ The two load-bearing traps that spec identifies are carried forward verbatim:
 - `UI_THEME` values are persisted in settings JSON, so `INSTRUMENT` must be
   **appended** (`= 4`), never inserted.
 - `SettingsList.h`'s `enumValues` list is **positional**, and
-  `CrossPointSettings::fromJson` clamps `ENUM` values to `enumValues.size()`.
+  `AlmanacSettings::fromJson` clamps `ENUM` values to `enumValues.size()`.
   Adding the enum value without appending a fifth list entry makes the clamp
   silently reset the setting on every load — an unselectable theme with no
   error anywhere. Both change together.
@@ -207,8 +207,8 @@ logic.
 
 ## Phase E — Internal namespace
 
-`CrossPointSettings` (259 references / 49 files), `CrossPointState` (8 files),
-and `CrossPointWebServer` (8 files) → `AlmanacSettings`, `AlmanacState`,
+`AlmanacSettings` (259 references / 49 files), `AlmanacState` (8 files),
+and `AlmanacWebServer` (8 files) → `AlmanacSettings`, `AlmanacState`,
 `AlmanacWebServer`, including file names.
 
 Mechanical and fully compiler-verified. Sequenced **last** because it is the

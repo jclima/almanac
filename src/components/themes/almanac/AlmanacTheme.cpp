@@ -114,7 +114,7 @@ void AlmanacTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char
   // percentage *text* (see BaseTheme.cpp's drawBatteryRight -> fillBatteryIcon
   // call, which runs unconditionally).
   const bool showPercentage =
-      SETTINGS.hideBatteryPercentage != CrossPointSettings::HIDE_BATTERY_PERCENTAGE::HIDE_ALWAYS;
+      SETTINGS.hideBatteryPercentage != AlmanacSettings::HIDE_BATTERY_PERCENTAGE::HIDE_ALWAYS;
   std::string batteryText;
   if (showPercentage) {
     batteryText = std::to_string(powerManager.getBatteryPercentage()) + "%";

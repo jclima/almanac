@@ -12,7 +12,7 @@
 #include <cstdlib>
 #include <cstring>
 
-#include "CrossPointSettings.h"
+#include "AlmanacSettings.h"
 #include "GeoMath.h"
 #include "MappedInputManager.h"
 #include "SilentRestart.h"

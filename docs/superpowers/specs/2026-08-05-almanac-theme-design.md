@@ -104,7 +104,7 @@ theme × orientation combination — Almanac included.
 
 ## Wiring
 
-- `CrossPointSettings::UI_THEME` gains `ALMANAC`. **Append it** rather than
+- `AlmanacSettings::UI_THEME` gains `ALMANAC`. **Append it** rather than
   inserting: the enum's numeric values are persisted in settings JSON, so
   inserting in the middle would silently reassign every user's saved theme.
 - `UITheme::setTheme` gains a case (the switch is exhaustive with no
@@ -115,13 +115,13 @@ theme × orientation combination — Almanac included.
   **This registration is load-bearing, not cosmetic.** The picker's
   `enumValues` list in `SettingsList.h` is *positional* — index 0 is
   `CLASSIC`, 1 is `LYRA`, 2 is `LYRA_3_COVERS`, 3 is `ROUNDEDRAFF` — and
-  `CrossPointSettings::fromJson` clamps `SettingType::ENUM` values to
+  `AlmanacSettings::fromJson` clamps `SettingType::ENUM` values to
   `enumValues.size()`. Adding `ALMANAC = 4` to the enum *without* appending a
   fifth entry to that list would make the clamp silently reset the setting to
   the default on every load, producing a theme that cannot be selected and no
   error anywhere. Both must change together, and the list order must continue
   to match the enum's numeric order exactly.
-- `CrossPointSettings::uiTheme`'s default flips to `ALMANAC` so a fresh
+- `AlmanacSettings::uiTheme`'s default flips to `ALMANAC` so a fresh
   install boots into it. Existing installs keep whatever is already saved.
 
 ## Testing
