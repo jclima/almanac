@@ -318,11 +318,30 @@ void HomeActivity::render(RenderLock&&) {
     menuIcons.insert(menuIcons.begin(), Book);
   }
 
+  // The menu's own y already accounts for everything above it (header,
+  // cover tile, menu offset) via homeTopPadding + homeCoverTileHeight +
+  // homeMenuTopOffset, so the space available below it runs down to the
+  // button-hints bar and no further: pageHeight - buttonHintsHeight - menuTop.
+  // The previous formula instead subtracted headerHeight and verticalSpacing
+  // -- neither is part of this rect's y -- and never subtracted
+  // homeCoverTileHeight at all, so the computed height had no relationship
+  // to the actual space below menuTop (e.g. 636px under Almanac against a
+  // rect.y of 450 on an 800px-tall screen, a bottom of 1086). BaseTheme's,
+  // LyraTheme's and Almanac's own drawButtonMenu all ignore rect.height
+  // entirely, so that overshoot was harmless for them, but
+  // RoundedRaffTheme::drawButtonMenu pages via `rect.height / rowStep`, and
+  // an inflated height defeats that paging by fitting more items on a
+  // "page" than actually have room to draw.
+  // Clamped to >= 0: Home always renders in forced Portrait in practice
+  // (every activity that sets a non-Portrait orientation -- EpubReader,
+  // TxtReader -- resets to Portrait in its own onExit() before any other
+  // activity can render), but nothing here re-asserts that, so this guards
+  // against a negative height feeding RoundedRaffTheme's
+  // `rect.height / rowStep` paging (see the comment above) if that ever
+  // changes.
+  const int menuTop = metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset;
   GUI.drawButtonMenu(
-      renderer,
-      Rect{0, metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset, pageWidth,
-           pageHeight - (metrics.headerHeight + metrics.homeTopPadding + metrics.verticalSpacing +
-                         metrics.homeMenuTopOffset + metrics.buttonHintsHeight)},
+      renderer, Rect{0, menuTop, pageWidth, std::max(0, pageHeight - metrics.buttonHintsHeight - menuTop)},
       static_cast<int>(menuItems.size()),
       metrics.homeContinueReadingInMenu ? selectorIndex : selectorIndex - recentBooks.size(),
       [&menuItems](int index) { return std::string(menuItems[index]); },
