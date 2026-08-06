@@ -1,7 +1,7 @@
-# CrossPoint Reader Development Guide
+# Almanac Development Guide
 
-Project: Open-source e-reader firmware for Xteink X4 (ESP32-C3)
-Mission: Provide a lightweight, high-performance reading experience focused on EPUB rendering on constrained hardware.
+Project: Almanac — e-reader firmware with flight tracking for the Xteink X4 (ESP32-C3)
+Mission: A focused reading experience on constrained hardware, plus a nearby-aircraft tracker. Hard fork of CrossPoint Reader.
 
 ## AI Agent Identity and Cognitive Rules
 * Role: Senior Embedded Systems Engineer (ESP-IDF/Arduino-ESP32 specialized).
@@ -393,8 +393,8 @@ Constraint: Physical button positions are fixed on hardware, but their logical f
 ### Singleton Access
 **Available Singletons**:
 ```cpp
-#define SETTINGS CrossPointSettings::getInstance()  // User settings
-#define APP_STATE CrossPointState::getInstance()    // Runtime state
+#define SETTINGS AlmanacSettings::getInstance()  // User settings
+#define APP_STATE AlmanacState::getInstance()    // Runtime state
 #define GUI UITheme::getInstance()                   // Current theme
 #define Storage HalStorage::getInstance()            // SD card I/O
 #define I18N I18n::getInstance()                     // Internationalization
@@ -605,24 +605,30 @@ git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/ori
 git status --short
 ```
 
-**Example Output** (forked repository):
+**Current remotes** — note that `origin` points at *upstream CrossPoint*, and
+`fork` is this project's own repository. This is inherited from how the fork was
+cloned and is the opposite of the usual convention, so always read `git remote -v`
+rather than assuming:
+
 ```text
-origin      https://github.com/<your-username>/crosspoint-reader.git (fetch/push)
-upstream    https://github.com/crosspoint-reader/crosspoint-reader.git (fetch/push)
+fork        https://github.com/jclima/flightreader.git      (fetch/push)  <- Almanac
+origin      https://github.com/crosspoint-reader/crosspoint-reader (fetch/push)  <- upstream
 ```
+
+Almanac is a **hard fork**: no further merges are taken from upstream, and
+nothing here is submitted back to it. Never push to `origin`.
 
 ### Git Operation Rules
 
 1. **Never assume branch names**:
    ```bash
    # Bad: git push origin main
-   # Good: git push origin $(git branch --show-current)
+   # Good: git push fork $(git branch --show-current)
    ```
 
 2. **Never assume remote names or write permissions**:
-   - **Forked repos**: Push to `origin` (your fork), submit PR to `upstream`
-   - **Direct contributors**: May push feature branches to `upstream`
-   - **Always ask**: "Should I push to origin or create a PR?"
+   - Push to `fork`. `origin` is upstream and is read-only for us.
+   - **Always ask** before pushing.
 
 3. **Check for upstream changes before starting work**:
    ```bash
@@ -889,7 +895,7 @@ rm -rf /path/to/sd/.crosspoint/epub_<hash>/sections/
 - After modifying:
   - `lib/Epub/Epub/Section.cpp`
   - `lib/Epub/Epub/BookMetadataCache.cpp`
-  - Render settings in `CrossPointSettings`
+  - Render settings in `AlmanacSettings`
 
 ### Cache File Format Versioning
 

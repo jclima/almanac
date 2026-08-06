@@ -1,8 +1,8 @@
-# CrossPoint User Guide
+# Almanac User Guide
 
-Welcome to the **CrossPoint** firmware. This guide outlines the hardware controls, navigation, and reading features of the device.
+Welcome to the **Almanac** firmware. This guide outlines the hardware controls, navigation, and reading features of the device.
 
-- [CrossPoint User Guide](#crosspoint-user-guide)
+- [Almanac User Guide](#almanac-user-guide)
   - [1. Hardware Overview](#1-hardware-overview)
     - [Button Layout](#button-layout)
     - [Taking a Screenshot](#taking-a-screenshot)
@@ -131,7 +131,7 @@ A **Wi-Fi signal strength indicator** (dBm) is displayed on-screen during joined
 
 ### 3.5.1 Calibre Wireless Transfers
 
-CrossPoint supports sending books from Calibre using the CrossPoint Reader device plugin.
+Almanac supports sending books from Calibre using the CrossPoint Reader device plugin.
 
 #### Installing the Plugin in Calibre
 
@@ -310,13 +310,13 @@ The Settings screen allows you to configure the device's behavior. There are a f
 
 - **Check for updates**: Check for Crosspoint firmware updates over Wi-Fi. Firmware can also be updated without a USB connection by placing a `firmware.bin` file on the SD card.
 
-- **Language**: Set the UI language. CrossPoint supports 24 languages: English, Spanish, French, German, Czech, Brazilian Portuguese, Russian, Swedish, Romanian, Catalan, Ukrainian, Belarusian, Italian, Polish, Finnish, Danish, Dutch, Turkish, Kazakh, Hungarian, Lithuanian, Slovenian, Valencian, and Hebrew.
+- **Language**: Set the UI language. Almanac ships 31 translations: Arabic, Belarusian, Bosnian, Brazilian Portuguese, Catalan, Czech, Danish, Dutch, English, European Portuguese, Finnish, French, German, Hebrew, Hungarian, Indonesian, Italian, Kazakh, Lithuanian, Norwegian Bokmål, Polish, Romanian, Russian, Slovak, Slovenian, Spanish, Swedish, Turkish, Ukrainian, Valencian, and Vietnamese. Arabic and Hebrew render right-to-left.
 
 - **Manage Fonts**: Browse, download, and manage custom font families installed from the SD card. See [Custom Fonts (SD Card)](#38-custom-fonts-sd-card) for more information.
 
 #### 3.6.5 OPDS Servers (Multiple Libraries)
 
-CrossPoint supports saving multiple OPDS servers and switching between them when browsing catalogs.
+Almanac supports saving multiple OPDS servers and switching between them when browsing catalogs.
 
 1. Open **Settings -> System -> OPDS Servers**.
 
@@ -362,18 +362,18 @@ Behavior notes:
 
 #### 3.6.7 KOReader Sync Quick Setup
 
-CrossPoint can sync reading progress with KOReader-compatible sync servers.
+Almanac can sync reading progress with KOReader-compatible sync servers.
 It also interoperates with KOReader apps/devices when they use the same server and credentials.
 
 ##### Option A: CrossPoint Sync Server (`sync.crosspointreader.com`, default)
 
-When **Sync Server URL** is left empty, CrossPoint uses the free CrossPoint sync server at `https://sync.crosspointreader.com`. It speaks the standard KOReader sync protocol (so KOReader apps can use it too). CrossPoint records page starts as chapter-content offsets and sends the corresponding standard KOReader XPath, so devices with different fonts or layouts can return to the same text.
+When **Sync Server URL** is left empty, Almanac uses the free CrossPoint sync server at `https://sync.crosspointreader.com`. It speaks the standard KOReader sync protocol (so KOReader apps can use it too). Almanac records page starts as chapter-content offsets and sends the corresponding standard KOReader XPath, so devices with different fonts or layouts can return to the same text.
 
-1. On each CrossPoint device:
+1. On each Almanac device:
 
    - Go to **Settings -> System -> KOReader Sync**.
 
-   - Set **Username** and **Password** (enter the plain password; CrossPoint computes MD5 internally, and use the same values on all devices).
+   - Set **Username** and **Password** (enter the plain password; Almanac computes MD5 internally, and use the same values on all devices).
 
    - Leave **Sync Server URL** empty (or set it to `https://sync.crosspointreader.com`).
 
@@ -385,7 +385,7 @@ Accounts are per server. Existing `sync.koreader.rocks` credentials do not exist
 
 Use this if you already sync KOReader devices against the official public server.
 
-1. On each CrossPoint device:
+1. On each Almanac device:
 
    - Go to **Settings -> System -> KOReader Sync**.
 
@@ -450,7 +450,7 @@ curl -H "Accept: application/vnd.koreader.v1+json" "http://<server-ip>:17200/hea
 ```
 
 3. Register a user once.
-   CrossPoint authenticates against KOReader Sync (`koreader/kosync`) using an MD5 key, so register using the MD5 of your password:
+   Almanac authenticates against KOReader Sync (`koreader/kosync`) using an MD5 key, so register using the MD5 of your password:
 
 > [!WARNING]
 > Sending a reusable MD5-derived password over plain HTTP is insecure.
@@ -471,11 +471,11 @@ curl -i "http://<server-ip>:17200/users/create" \
 
 If this returns `HTTP 402` with `{"code":2002,"message":"Username is already registered."}`, the account already exists.
 
-4. On each CrossPoint device:
+4. On each Almanac device:
    
    - Go to **Settings -> System -> KOReader Sync**.
    
-   - Set **Username** and **Password** (enter the plain password; CrossPoint computes MD5 internally, and use the same values on all devices).
+   - Set **Username** and **Password** (enter the plain password; Almanac computes MD5 internally, and use the same values on all devices).
    
    - Set **Sync Server URL** to `http://<server-ip>:17200`.
    
@@ -488,7 +488,7 @@ If you use the HTTPS listener, use `https://<server-ip>:7200` (`curl -k` only fo
 Once any of the options above is set up, press **Confirm** while reading to open the reader menu, then select **Sync Progress**. Alternatively, set **Settings -> Controls -> Long-press Menu** to **KOSync** and hold Confirm to launch sync directly.
 
 - With **Sync Behavior** set to **Ask every time**, choose **Apply Remote** to jump to remote progress or **Upload Local** to push current progress.
-- With **Sync Behavior** set to **Smart sync**, CrossPoint auto-resolves simple cases: upload when no remote progress exists, confirm and leave both unchanged when local and remote progress are already synchronized, upload when local progress is further ahead, or apply remote when remote progress is further ahead.
+- With **Sync Behavior** set to **Smart sync**, Almanac auto-resolves simple cases: upload when no remote progress exists, confirm and leave both unchanged when local and remote progress are already synchronized, upload when local progress is further ahead, or apply remote when remote progress is further ahead.
 
 ### 3.7 Sleep Screen
 
@@ -496,8 +496,8 @@ The **Sleep Screen** setting controls what is displayed when the device goes to 
 
 | Mode               | Behavior                                                                                                                     |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
-| **Dark** (default) | The CrossPoint logo on a dark background.                                                                                    |
-| **Light**          | The CrossPoint logo on a white background.                                                                                   |
+| **Dark** (default) | The Almanac logo on a dark background.                                                                                    |
+| **Light**          | The Almanac logo on a white background.                                                                                   |
 | **Custom**         | A custom image from the SD card (see below). Falls back to **Dark** if no custom image is found.                             |
 | **Cover**          | The cover of the currently open book. Falls back to **Dark** if no book is open.                                             |
 | **Cover + Custom** | The cover of the currently open book, shown only while actively reading. Falls back to **Custom** behavior when not reading. |
@@ -531,7 +531,7 @@ To use custom sleep images, set the sleep screen mode to **Custom** or **Cover +
 
 ### 3.8 Custom Fonts (SD Card)
 
-CrossPoint supports loading additional fonts from the SD card, extending beyond the two built-in families (Noto Serif, Noto Sans). Custom fonts can include extended Unicode coverage, enabling CJK (Chinese, Japanese, Korean) and other scripts.
+Almanac supports loading additional fonts from the SD card, extending beyond the two built-in families (Noto Serif, Noto Sans). Custom fonts can include extended Unicode coverage, enabling CJK (Chinese, Japanese, Korean) and other scripts.
 
 There are three ways to install fonts:
 
@@ -590,7 +590,7 @@ If the device goes to sleep or you close the book while viewing a footnote, the 
 
 ### Supported Languages
 
-CrossPoint renders text using the following Unicode character blocks, enabling support for a wide range of languages:
+Almanac renders text using the following Unicode character blocks, enabling support for a wide range of languages:
 
 * **Latin Script (Basic, Supplement, Extended-A/B):** Covers English, German, French, Spanish, Portuguese, Italian, Dutch, Swedish, Norwegian, Danish, Finnish, Polish, Czech, Hungarian, Romanian, Slovak, Slovenian, Turkish, Catalan, and others.
 * **Cyrillic Script (Standard and Extended):** Covers Russian, Ukrainian, Belarusian, Bulgarian, Serbian, Macedonian, Kazakh, Kyrgyz, Mongolian, and others.
@@ -655,7 +655,7 @@ Please note that this firmware is currently in active development. The following
 
 If an issue or crash is encountered while using Crosspoint, feel free to raise an issue ticket and attach the logs.
 
-**Crash reports on SD card:** After a crash, CrossPoint automatically saves a crash report to the SD card (no USB connection needed). Check the root of the SD card for a crash log file and include it with any bug report.
+**Crash reports on SD card:** After a crash, Almanac automatically saves a crash report to the SD card (no USB connection needed). Check the root of the SD card for a crash log file and include it with any bug report.
 
 **Serial monitor logs:** For more detailed debugging, connect the device to a computer and run the custom debugging monitor script (requires Python 3 with `pyserial`, `colorama`, and `matplotlib`; install via `pip3 install pyserial colorama matplotlib`):
 
