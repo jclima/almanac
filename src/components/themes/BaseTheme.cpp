@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <string>
 
+#include "CrossPointSettings.h"
 #include "I18n.h"
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
