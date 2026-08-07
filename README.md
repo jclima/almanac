@@ -82,7 +82,7 @@ continuing CrossPoint's. Built and flashed on real X4 hardware.
 
 Verified by CI on every change: the `default` and `sticky` build environments
 (the two target MCU families — see [Build environments](#build-environments));
-208 host unit tests; `clang-format` (pinned to version 21); and `cppcheck`,
+the host unit-test suite; `clang-format` (pinned to version 21); and `cppcheck`,
 which fails the build on a single finding of any severity. The `gh_release`,
 `gh_release_rc` and `slim` environments differ from `default` only in logging
 level, so CI does not build them per change.
