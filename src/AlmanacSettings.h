@@ -262,7 +262,7 @@ class AlmanacSettings : public PersistableStore<AlmanacSettings> {
   // on rect.height in any theme, so a 6th menu tile (OPDS configured) clips
   // under Almanac's solid button-hints bar. Flip this once that's fixed.
   // See docs/superpowers/specs/2026-08-05-almanac-theme-design.md.
-  uint8_t uiTheme = LYRA;
+  uint8_t uiTheme = ALMANAC;
   // Sunlight fading compensation
   uint8_t fadingFix = 0;
   // Power button return from footnotes (1 = enabled, 0 = disabled)
