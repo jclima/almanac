@@ -611,7 +611,7 @@ cloned and is the opposite of the usual convention, so always read `git remote -
 rather than assuming:
 
 ```text
-fork        https://github.com/jclima/flightreader.git      (fetch/push)  <- Almanac
+fork        https://github.com/jclima/almanac.git      (fetch/push)  <- Almanac
 origin      https://github.com/crosspoint-reader/crosspoint-reader (fetch/push)  <- upstream
 ```
 
