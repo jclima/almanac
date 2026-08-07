@@ -1,0 +1,62 @@
+<svg viewBox="0 0 560 900" xmlns="http://www.w3.org/2000/svg" font-family="Helvetica, Arial, sans-serif">
+  <title>Almanac theme — Home screen (illustrative mockup)</title>
+
+  <rect x="0" y="0" width="560" height="900" fill="#f4f4f4"/>
+
+  <text x="280" y="26" text-anchor="middle" font-size="13" fill="#666">
+    Illustrative UI mockup of the Almanac theme — not an actual device photo
+  </text>
+
+  <!-- Device bezel -->
+  <rect x="20" y="40" width="520" height="820" rx="26" fill="#161616"/>
+  <circle cx="280" cy="60" r="3" fill="#3a3a3a"/>
+
+  <!-- Screen -->
+  <rect x="40" y="60" width="480" height="780" fill="#ffffff"/>
+
+  <!-- Header bar: local rect {0, topPadding(5), pageWidth, homeTopPadding(40)} -->
+  <rect x="40" y="60" width="480" height="45" fill="#000000"/>
+  <text x="504" y="88" text-anchor="end" font-size="16" fill="#ffffff">82%</text>
+
+  <!-- Recent-book cover tile: local rect {0, homeTopPadding, pageWidth, homeCoverTileHeight(400)} -->
+  <rect x="40" y="105" width="480" height="400" fill="#ffffff" stroke="#000000" stroke-width="2"/>
+  <!-- simple open-book glyph, centered -->
+  <g stroke="#000000" stroke-width="3" fill="none">
+    <path d="M 280 250 L 280 340" />
+    <path d="M 280 258 C 240 240, 200 246, 190 258 L 190 330 C 200 320, 240 316, 280 332" />
+    <path d="M 280 258 C 320 240, 360 246, 370 258 L 370 330 C 360 320, 320 316, 280 332" />
+  </g>
+  <text x="280" y="400" text-anchor="middle" font-size="15" fill="#000000">Your library is empty</text>
+  <text x="280" y="422" text-anchor="middle" font-size="12" fill="#444444">Add books via the File Transfer web UI</text>
+
+  <!-- Home menu tiles: menuRowHeight(45) + menuSpacing(8), contentSidePadding(16) -->
+  <!-- tile 1: Browse Files -->
+  <rect x="56" y="530" width="448" height="45" fill="#ffffff" stroke="#000000" stroke-width="2"/>
+  <text x="280" y="558" text-anchor="middle" font-size="15" fill="#000000">Browse Files</text>
+
+  <!-- tile 2: Recent Books -->
+  <rect x="56" y="583" width="448" height="45" fill="#ffffff" stroke="#000000" stroke-width="2"/>
+  <text x="280" y="611" text-anchor="middle" font-size="15" fill="#000000">Recent Books</text>
+
+  <!-- tile 3: File Transfer -->
+  <rect x="56" y="636" width="448" height="45" fill="#ffffff" stroke="#000000" stroke-width="2"/>
+  <text x="280" y="664" text-anchor="middle" font-size="15" fill="#000000">File Transfer</text>
+
+  <!-- tile 4: Nearby Flights -->
+  <rect x="56" y="689" width="448" height="45" fill="#ffffff" stroke="#000000" stroke-width="2"/>
+  <text x="280" y="717" text-anchor="middle" font-size="15" fill="#000000">Nearby Flights</text>
+
+  <!-- tile 5: Settings — selected. Two-level emphasis: filled black row plus
+       a heavier stroke offset outside the fill with a 1px gap between them
+       (kSelectionStroke=3, kSelectionStrokeWidth=2), matching
+       AlmanacTheme::drawButtonMenu. -->
+  <rect x="56" y="742" width="448" height="45" fill="#000000"/>
+  <rect x="53" y="739" width="454" height="51" fill="none" stroke="#000000" stroke-width="2"/>
+  <text x="280" y="770" text-anchor="middle" font-size="15" fill="#ffffff">Settings</text>
+
+  <!-- Button-hints footer bar -->
+  <rect x="40" y="792" width="480" height="48" fill="#000000"/>
+  <text x="220" y="822" text-anchor="middle" font-size="13" fill="#ffffff">SELECT</text>
+  <text x="340" y="822" text-anchor="middle" font-size="13" fill="#ffffff">UP</text>
+  <text x="460" y="822" text-anchor="middle" font-size="13" fill="#ffffff">DOWN</text>
+</svg>

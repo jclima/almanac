@@ -8,7 +8,7 @@ The name is the honest description. A nautical or aeronautical almanac is a
 book of tables you carry to navigate by — part reference, part sky. That is
 what this firmware is.
 
-![Almanac running on an Xteink device](./docs/images/cover.jpg)
+![Almanac theme Home screen — illustrative UI mockup, not a device photo](./docs/images/almanac-theme-home.svg)
 
 > ### Lineage
 >
