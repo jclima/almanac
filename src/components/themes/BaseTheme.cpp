@@ -265,14 +265,19 @@ int BaseTheme::getListPageItems(int contentHeight, bool hasSubtitle) const {
   return std::max(1, contentHeight / rowStep);
 }
 
-int BaseTheme::getMenuRowStep(const int availableHeight, const int rowCount) const {
+MenuRowLayout BaseTheme::getButtonMenuLayout(const GfxRenderer& renderer, const Rect rect, const int buttonCount,
+                                             const int selectedIndex) const {
+  (void)renderer;  // Classic's rows are a fixed metric, not font-derived.
   // Reads the *active* metrics rather than BaseMetrics so themes that inherit
-  // this implementation (Lyra, Lyra 3 Covers, RoundedRaff) get their own pitch
-  // -- the same value HomeActivity's hit-test used before this was factored
-  // out, so their behaviour is unchanged.
+  // this implementation (Lyra, Lyra 3 Covers) get their own row height and
+  // pitch without needing an override of their own.
   const auto& metrics = UITheme::getInstance().getMetrics();
-  return MenuLayout::fittedRowStep(availableHeight, metrics.menuRowHeight, metrics.menuRowHeight + metrics.menuSpacing,
-                                   rowCount);
+  const int rowStep = MenuLayout::fittedRowStep(rect.height, metrics.menuRowHeight,
+                                                metrics.menuRowHeight + metrics.menuSpacing, buttonCount);
+  // paginate=false: these themes clear the button-hints bar by compressing
+  // gaps, so every row is drawn. Paging here would hide entries instead.
+  return MenuLayout::menuRowLayout(rect.y, rect.height, metrics.menuRowHeight, rowStep, buttonCount, selectedIndex,
+                                   /*paginate=*/false);
 }
 
 void BaseTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, int selectedIndex,
@@ -713,19 +718,19 @@ void BaseTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
   // the button-hints bar. Menus that already fit keep their natural pitch.
   // Via the virtual, not MenuLayout directly, so HomeActivity's hit-test and
   // this draw always resolve to the same theme's arithmetic.
-  const int rowStep = getMenuRowStep(rect.height, buttonCount);
+  const MenuRowLayout layout = getButtonMenuLayout(renderer, rect, buttonCount, selectedIndex);
 
-  for (int i = 0; i < buttonCount; ++i) {
-    const int tileY = rect.y + i * rowStep;
+  for (int i = layout.firstIndex; i < layout.firstIndex + layout.visibleCount; ++i) {
+    const int tileY = layout.top + (i - layout.firstIndex) * layout.rowStep;
 
     const bool selected = selectedIndex == i;
 
     if (selected) {
       renderer.fillRect(rect.x + BaseMetrics::values.contentSidePadding, tileY,
-                        rect.width - BaseMetrics::values.contentSidePadding * 2, BaseMetrics::values.menuRowHeight);
+                        rect.width - BaseMetrics::values.contentSidePadding * 2, layout.rowHeight);
     } else {
       renderer.drawRect(rect.x + BaseMetrics::values.contentSidePadding, tileY,
-                        rect.width - BaseMetrics::values.contentSidePadding * 2, BaseMetrics::values.menuRowHeight);
+                        rect.width - BaseMetrics::values.contentSidePadding * 2, layout.rowHeight);
     }
 
     std::string labelStr = buttonLabel(i);
@@ -733,8 +738,7 @@ void BaseTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
     const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, label);
     const int textX = rect.x + (rect.width - textWidth) / 2;
     const int lineHeight = renderer.getLineHeight(UI_10_FONT_ID);
-    const int textY =
-        tileY + (BaseMetrics::values.menuRowHeight - lineHeight) / 2;  // vertically centered assuming y is top of text
+    const int textY = tileY + (layout.rowHeight - lineHeight) / 2;  // vertically centered assuming y is top of text
     // Invert text when the tile is selected, to contrast with the filled background
     renderer.drawText(UI_10_FONT_ID, textX, textY, label, selectedIndex != i);
   }

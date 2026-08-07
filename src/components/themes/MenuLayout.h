@@ -52,4 +52,33 @@ constexpr int lastRowBottom(const int menuTop, const int rowHeight, const int ro
   return rowCount <= 0 ? menuTop : menuTop + (rowCount - 1) * rowStep + rowHeight;
 }
 
+// Assembles a MenuRowLayout (declared in BaseTheme.h, next to ThemeMetrics, so
+// that header can use it as a return type without including this one) from a
+// pitch the caller has already decided on.
+//
+// rowStep is an input rather than rowHeight + gap because the two families of
+// theme derive it differently and both must survive: the non-paginating themes
+// pass fittedRowStep() so gaps compress to clear the button-hints bar, while
+// RoundedRaff passes its natural font-derived pitch and paginates instead.
+//
+// paginate == false draws every row, which is what Classic, Lyra and Almanac
+// do -- they rely on fittedRowStep having already made the rows fit, so
+// dropping rows here would silently hide menu entries instead.
+constexpr MenuRowLayout menuRowLayout(const int top, const int height, const int rowHeight, const int rowStep,
+                                      const int itemCount, const int selectedIndex, const bool paginate) {
+  if (rowStep <= 0 || itemCount <= 0) return MenuRowLayout{top, rowHeight, rowStep, 0, 0, 0};
+
+  if (!paginate) return MenuRowLayout{top, rowHeight, rowStep, 0, itemCount, itemCount};
+
+  // selectedIndex arrives negative when a recent-book row is selected on a
+  // theme that keeps Continue Reading out of the menu, so clamp before paging.
+  const int safeSelectedIndex = selectedIndex > 0 ? selectedIndex : 0;
+  const int wholeRows = height / rowStep;
+  const int pageItems = wholeRows > 1 ? wholeRows : 1;  // a too-short rect still shows one row
+  const int firstIndex = (safeSelectedIndex / pageItems) * pageItems;
+  const int remaining = itemCount - firstIndex;
+  const int visibleCount = remaining <= 0 ? 0 : (remaining < pageItems ? remaining : pageItems);
+  return MenuRowLayout{top, rowHeight, rowStep, firstIndex, visibleCount, pageItems};
+}
+
 }  // namespace MenuLayout

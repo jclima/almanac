@@ -69,6 +69,18 @@ class HomeActivity final : public Activity {
   void onOpdsBrowserOpen();
   void onNearbyFlightsOpen();
 
+  // The rect handed to drawButtonMenu. render() and loop() share it so the
+  // drawn rows and the touch hit-test cannot disagree -- previously each
+  // derived the geometry separately and only a comment held them in step.
+  //
+  // Its height depends on buttonHintsHeight, which getMetrics() zeroes on
+  // touch hardware (there is no hints bar to draw, so BaseTheme::drawButtonHints
+  // returns early too). Reading it live rather than caching is what makes that
+  // work rather than something to guard against: both the draw and the
+  // hit-test see the same adjusted value, so a touch device simply gets a
+  // taller menu and no bar to avoid.
+  Rect menuRect() const;
+
   int getMenuItemCount() const;
   bool storeCoverBuffer();    // Store frame buffer for cover image
   bool restoreCoverBuffer();  // Restore frame buffer from stored cover

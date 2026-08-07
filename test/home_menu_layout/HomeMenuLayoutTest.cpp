@@ -83,6 +83,9 @@ TEST(HomeMenuLayout, ClassicFitsWithOpds) {
   const auto& m = BaseMetrics::values;
   const int count = menuItemCount(m, true, true);
   EXPECT_EQ(count, 6);
+  // Exact value pinned: this is the regression canary for the fit. 770 was the
+  // shipped overlap; 760 lands flush with the hints bar (bottom is exclusive).
+  EXPECT_EQ(lastRowBottomUniform(m, count), 760);
   expectClearOfHints(m, lastRowBottomUniform(m, count), "Classic 6 items");
 }
 
@@ -133,6 +136,8 @@ TEST(HomeMenuLayout, Lyra3CoversFitsWithoutOpds) {
 // the case that actually needs the gaps compressed.
 TEST(HomeMenuLayout, Lyra3CoversFitsWithOpds) {
   const auto& m = Lyra3CoversMetrics::values;
+  // Exact value pinned alongside Classic's: 796 was the shipped overlap.
+  EXPECT_EQ(lastRowBottomUniform(m, menuItemCount(m, true, true)), 756);
   expectClearOfHints(m, lastRowBottomUniform(m, menuItemCount(m, true, true)), "Lyra3Covers 6 items");
 }
 
@@ -164,21 +169,18 @@ TEST(HomeMenuLayout, RoundedRaffFitsWithOpds) {
   expectClearOfHints(m, lastRowBottomRoundedRaff(count), "RoundedRaff 7 items");
 }
 
-// RoundedRaff is the one theme whose drawButtonMenu does not consult
-// getMenuRowStep -- it paginates at a font-derived pitch instead. Its
-// hit-test still goes through the shared helper, so the helper must hand back
-// exactly the natural pitch HomeActivity used before this was factored out,
-// or the touch targets move under a theme this change claims not to touch.
-// The margin is thin: at 7 rows the fit works out to (335 - 42) / 6 = 48.83,
-// truncating to precisely the natural 48. Pinned rather than reasoned about.
-TEST(HomeMenuLayout, RoundedRaffHitTestPitchIsUnchanged) {
+// RoundedRaff's drawn rows have never matched its ThemeMetrics: the drawn row
+// is 49px tall on a 55px pitch (font-derived), against metrics that say 42 on
+// 48. HomeActivity used to hit-test with the metrics figures, drifting ~7px
+// per row. getButtonMenuLayout now reports the drawn geometry instead, so this
+// pins the gap the fix closes rather than the old agreement.
+TEST(HomeMenuLayout, RoundedRaffReportsDrawnGeometryNotMetrics) {
   const auto& m = RoundedRaffMetrics::values;
-  const int available = MenuLayout::availableHeight(m, kPortraitHeight);
-  const int natural = m.menuRowHeight + m.menuSpacing;
-  for (int rows = 1; rows <= 7; ++rows) {
-    EXPECT_EQ(MenuLayout::fittedRowStep(available, m.menuRowHeight, natural, rows), natural)
-        << "RoundedRaff hit-test pitch changed at " << rows << " rows";
-  }
+  const int metricsStep = m.menuRowHeight + m.menuSpacing;
+  EXPECT_EQ(metricsStep, 48);
+  EXPECT_EQ(kRoundedRaffRowHeight + kRoundedRaffRowGap, 55);
+  // 7px of drift per row is what made row 3 swallow taps meant for row 2.
+  EXPECT_NE(metricsStep, kRoundedRaffRowHeight + kRoundedRaffRowGap);
 }
 
 // --- Almanac -----------------------------------------------------------------
@@ -186,7 +188,7 @@ TEST(HomeMenuLayout, RoundedRaffHitTestPitchIsUnchanged) {
 // Almanac is the default theme and the tightest of the uniform-row themes: its
 // hints bar is 8px taller than Classic's, and its selected tile draws a stroke
 // kMenuSelectionReserve px OUTSIDE the fill, so the last row needs that much
-// clearance beyond itself. AlmanacTheme::getMenuRowStep reserves it; this
+// clearance beyond itself. AlmanacTheme::getButtonMenuLayout reserves it; this
 // mirrors that reservation rather than re-deriving the pitch.
 namespace {
 int lastRowBottomAlmanac(const int rowCount) {
@@ -215,7 +217,7 @@ TEST(HomeMenuLayout, AlmanacFitsWithOpds) {
 
 // Red/green for the reserve itself: at 6 rows, budgeting only the tiles leaves
 // the bottom tile fitting while its stroke still crosses into the bar -- by
-// exactly 1px. This is why getMenuRowStep subtracts the reserve up front
+// exactly 1px. This is why getButtonMenuLayout subtracts the reserve up front
 // rather than the draw simply clamping afterwards.
 TEST(HomeMenuLayout, AlmanacSelectionStrokeNeedsItsOwnReserve) {
   const auto& m = AlmanacMetrics::values;
@@ -283,4 +285,145 @@ TEST(HomeMenuLayout, FittedStepDegradesSafelyWhenNothingFits) {
   EXPECT_GE(MenuLayout::fittedRowStep(0, 45, 53, 6), 45);
   EXPECT_GE(MenuLayout::fittedRowStep(-100, 45, 53, 6), 45);
   EXPECT_EQ(MenuLayout::fittedRowStep(10, 45, 53, 1), 53);
+}
+
+// --- Row reporting and paging (MenuLayout::menuRowLayout) --------------------
+//
+// The tests above pin that rows FIT (nothing collides with the button-hints
+// bar). These pin that the reported rows are the rows actually drawn, which is
+// what makes taps land on them. RoundedRaff is the interesting case: its row
+// height follows the title font rather than ThemeMetrics, and it is the only
+// theme that pages.
+
+namespace {
+
+// RoundedRaff's real home-menu geometry.
+constexpr int kRrTop = 425;  // homeTopPadding 55 + homeCoverTileHeight 350 + homeMenuTopOffset 20
+constexpr int kRrRowHeight = kRoundedRaffRowHeight;
+constexpr int kRrRowStep = kRoundedRaffRowHeight + kRoundedRaffRowGap;
+constexpr int kRrItemCount = 7;       // Continue Reading + Browse + Recent + OPDS + Transfer + Flights + Settings
+constexpr int kRrPagingHeight = 280;  // yields pageItems = 5
+
+// Mirrors MappedInputManager::rowTouch's hit predicate, so these assertions
+// describe what a real tap resolves to. Returns the menu index, or -1 for a
+// miss (below the last drawn row, or inside the gap between two rows).
+int rowAt(const MenuRowLayout& layout, const int y) {
+  if (layout.rowStep <= 0 || y < layout.top) return -1;
+  const int r = (y - layout.top) / layout.rowStep;
+  if (r >= layout.visibleCount) return -1;
+  if (layout.rowHeight > 0 && (y - layout.top) % layout.rowStep >= layout.rowHeight) return -1;
+  return layout.firstIndex + r;
+}
+
+}  // namespace
+
+TEST(MenuRowLayout, ReportsPitchFromTheDrawnRowNotFromMetrics) {
+  constexpr MenuRowLayout layout =
+      MenuLayout::menuRowLayout(kRrTop, kRrPagingHeight, kRrRowHeight, kRrRowStep, kRrItemCount, 0, /*paginate=*/true);
+  EXPECT_EQ(layout.top, kRrTop);
+  EXPECT_EQ(layout.rowHeight, 49);  // not RoundedRaffMetrics' menuRowHeight of 42
+  EXPECT_EQ(layout.rowStep, 55);    // not its menuRowHeight + menuSpacing of 48
+}
+
+TEST(MenuRowLayout, TapInsideDrawnRowResolvesToThatRow) {
+  constexpr MenuRowLayout layout =
+      MenuLayout::menuRowLayout(kRrTop, kRrPagingHeight, kRrRowHeight, kRrRowStep, kRrItemCount, 0, /*paginate=*/true);
+  // Drawn row 2 spans y 535..583. Before this fix the hit-test used a 48px
+  // pitch and resolved y=570 to row 3.
+  EXPECT_EQ(rowAt(layout, 535), 2);
+  EXPECT_EQ(rowAt(layout, 570), 2);
+  EXPECT_EQ(rowAt(layout, 583), 2);
+}
+
+TEST(MenuRowLayout, GapBetweenRowsIsNotTappable) {
+  constexpr MenuRowLayout layout =
+      MenuLayout::menuRowLayout(kRrTop, kRrPagingHeight, kRrRowHeight, kRrRowStep, kRrItemCount, 0, /*paginate=*/true);
+  EXPECT_EQ(rowAt(layout, kRrTop + kRrRowHeight), -1);      // first pixel of the gap
+  EXPECT_EQ(rowAt(layout, kRrTop + kRrRowHeight + 5), -1);  // last pixel of the gap
+  EXPECT_EQ(rowAt(layout, kRrTop + 55), 1);                 // first pixel of row 1
+  EXPECT_EQ(rowAt(layout, kRrTop - 1), -1);                 // above the menu
+}
+
+TEST(MenuRowLayout, SecondPageStartsAtThePageBoundary) {
+  constexpr MenuRowLayout layout =
+      MenuLayout::menuRowLayout(kRrTop, kRrPagingHeight, kRrRowHeight, kRrRowStep, kRrItemCount, 5, /*paginate=*/true);
+  EXPECT_EQ(layout.pageItems, 5);
+  EXPECT_EQ(layout.firstIndex, 5);
+  EXPECT_EQ(layout.visibleCount, 2);  // only items 5 and 6 remain
+  // The topmost drawn row on page 2 is item 5, not item 0.
+  EXPECT_EQ(rowAt(layout, kRrTop), 5);
+  EXPECT_EQ(rowAt(layout, kRrTop + 55), 6);
+}
+
+TEST(MenuRowLayout, TapBelowAPartialLastPageIsRejected) {
+  constexpr MenuRowLayout layout =
+      MenuLayout::menuRowLayout(kRrTop, kRrPagingHeight, kRrRowHeight, kRrRowStep, kRrItemCount, 5, /*paginate=*/true);
+  // Page 2 draws 2 of 5 possible rows; the empty space below them is not a row.
+  EXPECT_EQ(rowAt(layout, kRrTop + 55 * 2), -1);
+  EXPECT_EQ(rowAt(layout, kRrTop + 55 * 4), -1);
+}
+
+TEST(MenuRowLayout, NegativeSelectionClampsToTheFirstPage) {
+  // HomeActivity passes selectorIndex - recentBooks.size() on themes that keep
+  // Continue Reading out of the menu, which is negative while a recent book is
+  // selected.
+  constexpr MenuRowLayout layout =
+      MenuLayout::menuRowLayout(kRrTop, kRrPagingHeight, kRrRowHeight, kRrRowStep, kRrItemCount, -1, /*paginate=*/true);
+  EXPECT_EQ(layout.firstIndex, 0);
+  EXPECT_EQ(layout.visibleCount, 5);
+}
+
+TEST(MenuRowLayout, ShortRectStillDrawsOneRow) {
+  // pageItems floors at 1 so a rect too short for a single row does not divide
+  // by zero or page infinitely.
+  constexpr MenuRowLayout layout =
+      MenuLayout::menuRowLayout(kRrTop, 10, kRrRowHeight, kRrRowStep, kRrItemCount, 3, /*paginate=*/true);
+  EXPECT_EQ(layout.pageItems, 1);
+  EXPECT_EQ(layout.firstIndex, 3);
+  EXPECT_EQ(layout.visibleCount, 1);
+}
+
+TEST(MenuRowLayout, DegenerateInputsProduceNoTappableRows) {
+  constexpr MenuRowLayout empty =
+      MenuLayout::menuRowLayout(kRrTop, kRrPagingHeight, kRrRowHeight, kRrRowStep, 0, 0, /*paginate=*/true);
+  EXPECT_EQ(empty.visibleCount, 0);
+  EXPECT_EQ(empty.pageItems, 0);
+  EXPECT_EQ(rowAt(empty, kRrTop), -1);
+
+  constexpr MenuRowLayout zeroStep =
+      MenuLayout::menuRowLayout(kRrTop, kRrPagingHeight, 0, 0, kRrItemCount, 0, /*paginate=*/true);
+  EXPECT_EQ(zeroStep.visibleCount, 0);
+  EXPECT_EQ(rowAt(zeroStep, kRrTop), -1);
+}
+
+// RoundedRaff's real rect (335px, not the 280 the paging cases above use)
+// holds 6 of its 7 rows, so page 2 is reachable in the shipped configuration
+// -- this is not a theoretical path.
+TEST(MenuRowLayout, RoundedRaffRealGeometryPagesAtSevenItems) {
+  const auto& m = RoundedRaffMetrics::values;
+  const int available = MenuLayout::availableHeight(m, kPortraitHeight);
+  EXPECT_EQ(available, 335);
+  const MenuRowLayout page1 =
+      MenuLayout::menuRowLayout(kRrTop, available, kRrRowHeight, kRrRowStep, kRrItemCount, 0, /*paginate=*/true);
+  EXPECT_EQ(page1.pageItems, 6);
+  EXPECT_EQ(page1.visibleCount, 6);
+  const MenuRowLayout page2 =
+      MenuLayout::menuRowLayout(kRrTop, available, kRrRowHeight, kRrRowStep, kRrItemCount, 6, /*paginate=*/true);
+  EXPECT_EQ(page2.firstIndex, 6);
+  EXPECT_EQ(page2.visibleCount, 1);
+}
+
+// The non-paginating themes must never drop a row: their fit clears the hints
+// bar by compressing gaps, so paging would hide entries instead. Almanac is
+// the one that matters most -- it is the default and the tightest.
+TEST(MenuRowLayout, NonPaginatingThemesDrawEveryRowAtSix) {
+  const auto& m = AlmanacMetrics::values;
+  const int available =
+      std::max(0, MenuLayout::availableHeight(m, kPortraitHeight) - AlmanacTheme::kMenuSelectionReserve);
+  const int step = MenuLayout::fittedRowStep(available, m.menuRowHeight, m.menuRowHeight + m.menuSpacing, 6);
+  const MenuRowLayout layout =
+      MenuLayout::menuRowLayout(MenuLayout::menuTop(m), available, m.menuRowHeight, step, 6, 5, /*paginate=*/false);
+  EXPECT_EQ(layout.firstIndex, 0);
+  EXPECT_EQ(layout.visibleCount, 6);
+  EXPECT_EQ(layout.pageItems, 6);  // == itemCount, so no row is ever off-page
 }

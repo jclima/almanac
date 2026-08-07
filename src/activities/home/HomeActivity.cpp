@@ -21,6 +21,20 @@
 #include "components/themes/MenuLayout.h"
 #include "fontIds.h"
 
+Rect HomeActivity::menuRect() const {
+  // Height is the run from the menu's own top edge down to the button-hints
+  // bar, so themes can size their rows against the space that actually exists.
+  // rect.y already accounts for everything drawn above the menu, so this is
+  // exactly "don't collide with the bar". availableHeight clamps to >= 0:
+  // Home always renders in forced Portrait in practice (EpubReader and
+  // TxtReader both reset to Portrait in their own onExit() before any other
+  // activity can render), but nothing here re-asserts that, and a negative
+  // height would feed RoundedRaffTheme's paging.
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  return Rect{0, MenuLayout::menuTop(metrics), renderer.getScreenWidth(),
+              MenuLayout::availableHeight(metrics, renderer.getScreenHeight())};
+}
+
 int HomeActivity::getMenuItemCount() const {
   int count = 5;  // File Browser, Recents, File transfer, Nearby Flights, Settings
   if (!recentBooks.empty()) {
@@ -252,23 +266,29 @@ void HomeActivity::loop() {
     return;
   }
 
-  const int menuTop = MenuLayout::menuTop(metrics);
   const int renderedMenuSelection =
-      metrics.homeContinueReadingInMenu ? selectorIndex : selectorIndex - recentBooks.size();
+      metrics.homeContinueReadingInMenu ? selectorIndex : selectorIndex - static_cast<int>(recentBooks.size());
   const int renderedMenuCount =
       menuCount - (metrics.homeContinueReadingInMenu ? 0 : static_cast<int>(recentBooks.size()));
-  // Hit-test against the same pitch the theme draws with, so touch targets keep
-  // tracking the rows when the gaps compress to clear the button-hints bar.
-  // Asking the theme (rather than computing it here) is what keeps the two in
-  // step for themes that reserve extra space -- Almanac's selection stroke.
-  const int menuRowStep =
-      GUI.getMenuRowStep(MenuLayout::availableHeight(metrics, renderer.getScreenHeight()), renderedMenuCount);
+  // Hit-test against what the active theme actually drew. Row height, pitch
+  // and the first drawn index all vary per theme -- RoundedRaff derives its
+  // row height from the title font and pages, Almanac reserves space for its
+  // selection stroke -- so re-deriving any of it from ThemeMetrics drifts away
+  // from the rows on screen.
+  //
+  // renderedMenuSelection is passed, not selectorIndex, so it shares an index
+  // space with the returned firstIndex. Today the only paging theme
+  // (RoundedRaff) is also the only one with homeContinueReadingInMenu = true,
+  // which makes the recent-books offset zero there; keeping both in rendered
+  // space is what would keep a future paging theme correct without it.
+  const MenuRowLayout menuLayout =
+      GUI.getButtonMenuLayout(renderer, menuRect(), renderedMenuCount, renderedMenuSelection);
   int menuRow = -1;
-  const auto menuTouch =
-      mappedInput.rowTouch(menuRow, menuTop, menuRowStep, renderedMenuCount, 0, INT32_MAX, metrics.menuRowHeight);
+  const auto menuTouch = mappedInput.rowTouch(menuRow, menuLayout.top, menuLayout.rowStep, menuLayout.visibleCount, 0,
+                                              INT32_MAX, menuLayout.rowHeight);
   if (menuTouch != MappedInputManager::RowTouch::None) {
-    const int touchedIndex =
-        metrics.homeContinueReadingInMenu ? menuRow : menuRow + static_cast<int>(recentBooks.size());
+    const int touchedIndex = menuLayout.firstIndex + menuRow +
+                             (metrics.homeContinueReadingInMenu ? 0 : static_cast<int>(recentBooks.size()));
     if (menuTouch == MappedInputManager::RowTouch::Down) {
       if (selectorIndex != touchedIndex) {
         selectorIndex = touchedIndex;
@@ -289,7 +309,6 @@ void HomeActivity::loop() {
 void HomeActivity::render(RenderLock&&) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
-  const auto pageHeight = renderer.getScreenHeight();
 
   renderer.clearScreen();
   bool bufferRestored = coverBufferStored && restoreCoverBuffer();
@@ -325,17 +344,10 @@ void HomeActivity::render(RenderLock&&) {
     menuIcons.insert(menuIcons.begin(), Book);
   }
 
-  // Height is the run from the menu's own top edge down to the button-hints
-  // bar, so themes can size their rows against the space that actually exists.
-  // rect.y already accounts for everything drawn above the menu, so this is
-  // exactly "don't collide with the bar". availableHeight clamps to >= 0:
-  // Home always renders in forced Portrait in practice (EpubReader and
-  // TxtReader both reset to Portrait in their own onExit() before any other
-  // activity can render), but nothing here re-asserts that, and a negative
-  // height would feed RoundedRaffTheme's `rect.height / rowStep` paging.
+  // Same rect the hit-test in loop() uses, so drawn rows and touch targets
+  // cannot disagree.
   GUI.drawButtonMenu(
-      renderer, Rect{0, MenuLayout::menuTop(metrics), pageWidth, MenuLayout::availableHeight(metrics, pageHeight)},
-      static_cast<int>(menuItems.size()),
+      renderer, menuRect(), static_cast<int>(menuItems.size()),
       metrics.homeContinueReadingInMenu ? selectorIndex : selectorIndex - recentBooks.size(),
       [&menuItems](int index) { return std::string(menuItems[index]); },
       [&menuIcons](int index) { return menuIcons[index]; });

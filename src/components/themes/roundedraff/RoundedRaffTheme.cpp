@@ -12,6 +12,7 @@
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
 #include "components/icons/cover.h"
+#include "components/themes/MenuLayout.h"
 #include "fontIds.h"
 
 namespace {
@@ -204,25 +205,32 @@ void RoundedRaffTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, con
   }
 }
 
+MenuRowLayout RoundedRaffTheme::getButtonMenuLayout(const GfxRenderer& renderer, const Rect rect, const int buttonCount,
+                                                    const int selectedIndex) const {
+  // Row height follows the title font rather than ThemeMetrics -- 10px of
+  // padding above and below the line box -- which is why this query needs the
+  // renderer and cannot be a pure ThemeMetrics lookup. It is also the only
+  // theme that pages rather than compressing gaps, so it keeps its natural
+  // pitch and passes paginate=true.
+  const int rowHeight = renderer.getLineHeight(kTitleFontId) + 20;
+  return MenuLayout::menuRowLayout(rect.y, rect.height, rowHeight, rowHeight + kSelectableRowGap, buttonCount,
+                                   selectedIndex, /*paginate=*/true);
+}
+
 void RoundedRaffTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                                       const std::function<std::string(int index)>& buttonLabel,
                                       const std::function<UIIcon(int index)>& rowIcon) const {
   (void)rowIcon;
+  const MenuRowLayout layout = getButtonMenuLayout(renderer, rect, buttonCount, selectedIndex);
   const int sidePadding = RoundedRaffMetrics::values.contentSidePadding;
   const int rowX = rect.x + sidePadding;
-  const int rowHeight = renderer.getLineHeight(kTitleFontId) + 20;  // 10px top + 10px bottom
-  const int rowGap = kSelectableRowGap;
-  const int rowStep = rowHeight + rowGap;
-  const int pageItems = std::max(1, rect.height / rowStep);
-  const int safeSelectedIndex = std::max(0, selectedIndex);
-  const int pageStartIndex = (safeSelectedIndex / pageItems) * pageItems;
-  const int menuTop = rect.y;
+  const int rowHeight = layout.rowHeight;
   const int textLineHeight = renderer.getLineHeight(kTitleFontId);
   const int menuMaxWidth = std::max(0, rect.width - sidePadding * 2);
 
-  for (int i = pageStartIndex; i < buttonCount && i < pageStartIndex + pageItems; ++i) {
+  for (int i = layout.firstIndex; i < layout.firstIndex + layout.visibleCount; ++i) {
     const std::string label = buttonLabel(i);
-    const int rowY = menuTop + (i - pageStartIndex) * rowStep;
+    const int rowY = layout.top + (i - layout.firstIndex) * layout.rowStep;
     constexpr int kRowPaddingX = 40;  // 20px L/R
     const int maxLabelWidth = std::max(0, menuMaxWidth - kRowPaddingX);
     const std::string truncatedLabel =
@@ -240,7 +248,8 @@ void RoundedRaffTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int butt
     }
   }
 
-  drawScrollBar(renderer, rect, buttonCount, pageStartIndex, pageItems);
+  // Same layout the rows were drawn from, so the thumb tracks the visible page.
+  drawScrollBar(renderer, rect, buttonCount, layout.firstIndex, layout.pageItems);
 }
 
 void RoundedRaffTheme::drawTextField(const GfxRenderer& renderer, Rect rect, const int textWidth, bool cursorMode,
