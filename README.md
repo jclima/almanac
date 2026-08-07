@@ -61,10 +61,37 @@ Inherited from CrossPoint and unchanged:
 
 ### Looking like itself
 
-- **Instrument** — Almanac's default theme. Solid header and footer bars, a
-  framed list with hairline separators, and two-level selection emphasis.
-  Classic, Lyra, Lyra Extended and RoundedRaff all remain available.
-- Its own mark, boot splash and version identity.
+- **Almanac** — the default theme, an instrument panel. Solid black header and
+  footer bars bookend the screen, the list sits in a single frame with hairline
+  separators, and the selected row gets two-level emphasis: a filled bar plus a
+  heavier stroke hugging it, separated by a 1px gap so the two levels stay
+  distinct on a 1-bit panel. The battery reads as white text in the header bar
+  rather than the usual pictogram, because the shared battery-outline helper
+  only draws black ink. Classic, Lyra, Lyra Extended and RoundedRaff all remain
+  available in Settings → Display → Theme.
+- Its own mark — a compass rose in an instrument bezel — plus boot splash,
+  sleep screen and version identity.
+
+Existing devices keep whichever theme they already have saved; the default only
+applies to a fresh install.
+
+## Status
+
+**Version 1.0.0** — Almanac's own numbering, restarted at 1.0.0 rather than
+continuing CrossPoint's. Built and flashed on real X4 hardware.
+
+Verified by CI on every change: the `default`, `gh_release`, `slim` and
+`sticky` build environments; 178 host unit tests; `clang-format` (pinned to
+version 21); and `cppcheck`, which fails the build on a single finding of any
+severity.
+
+Verified on device: boots to Home, reads settings and caches from the SD card,
+no off-panel draw errors, no panics, ~162 KB free heap at idle against a ~380 KB
+total.
+
+Not yet verified on device: the theme across all screens in both orientations,
+and the flight tracker end to end. This is one person's firmware on one device —
+treat it accordingly.
 
 ## Install
 
@@ -90,7 +117,7 @@ at <https://crosspointreader.com/#flash-tools>.
 ### Setup
 
 ```bash
-git clone --recursive https://github.com/jclima/flightreader
+git clone --recursive https://github.com/jclima/almanac
 ```
 
 If you cloned without `--recursive` — or you are working in a **git worktree**,

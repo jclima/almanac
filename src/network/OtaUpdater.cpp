@@ -19,7 +19,7 @@ namespace {
 // ALMANAC_VERSION, so an upstream release would always read as "an update is
 // available" and installing it would flash CrossPoint over Almanac.
 // Keep in step with the repository name if it is ever renamed.
-constexpr char latestReleaseUrl[] = "https://api.github.com/repos/jclima/flightreader/releases/latest";
+constexpr char latestReleaseUrl[] = "https://api.github.com/repos/jclima/almanac/releases/latest";
 }  // namespace
 
 OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
