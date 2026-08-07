@@ -90,9 +90,16 @@ find src -name "*.cpp" -o -name "*.h" | xargs clang-format -i
 * **Logging**: ALWAYS use `LOG_INF`, `LOG_DBG`, or `LOG_ERR` from `Logging.h`. Raw Serial output is deprecated.
 * **Environments** (in `platformio.ini`):
   * `default`: Development (LOG_LEVEL=2, serial enabled)
-  * `gh_release`: Production (LOG_LEVEL=0)
+  * `gh_release`: Production (LOG_LEVEL=1)
   * `gh_release_rc`: Release candidate (LOG_LEVEL=1)
   * `slim`: Minimal build (no serial logging)
+  * `sticky`: Seeed Sticky — **ESP32-S3**, not C3 (3.97" 800x480 SSD1677 + GT911
+    touch). Different MCU family, so one binary per family; build it explicitly
+    with `pio run -e sticky`. PSRAM is intentionally left off — the 48KB
+    framebuffer fits in DRAM, same as X4.
+
+  The first four envs all target the C3 and set both `FREEINK_DEVICE_X4` and
+  `FREEINK_DEVICE_X3`.
 
 ### Critical Build Flags
 These flags in `platformio.ini` fundamentally affect firmware behavior:
