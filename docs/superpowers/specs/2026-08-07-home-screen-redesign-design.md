@@ -40,7 +40,7 @@ permanent place is inside the fork's own rules rather than an expansion of them.
 | Hero slot | **Compact status panel** — mark, wordmark, battery. Not a book cover |
 | Tile form | **Hybrid** — full-width Continue Reading, 2-column grid, full-width Settings |
 | Navigation | **Stays 1-D**, reading order. No new button bindings |
-| New entries | Continue Reading and Network |
+| New entries | Continue Reading only — see "Network, and why it was dropped" |
 | Layout contract | **`tileRect(index)`** replaces uniform-pitch `MenuRowLayout` for Home |
 
 ## Layout
@@ -51,7 +51,7 @@ moves an existing tile.
 | Tier | y | Height | Contents |
 |---|---|---|---|
 | Masthead | 0 | 112 | Full-bleed black. Mark + wordmark left, battery right. Not selectable |
-| Continue Reading | 124 | 92 | Full width, black fill, title + progress bar + percent |
+| Continue Reading | 124 | 92 | Full width, black fill, book title (see "Progress", below) |
 | Grid | 228 | 3 rows × 128 | Two 217px columns, 14px column gap, 12px row gap |
 | Settings | 648 | 92 | Full width |
 | Button hints | 752 | 48 | Unchanged |
@@ -68,33 +68,40 @@ There is no recent book on a fresh install, and the Continue Reading tier is
 then absent. That is the one composition change that moves tiles, so it is
 defined explicitly rather than left to fall out of the arithmetic:
 
-Grid tile height is **fixed at 128** in both variants, and the grid block is
+Grid tile height is **fixed at 128** in every composition, and the grid block is
 **vertically centred** in the region between the tier above it and the Settings
-tier.
+tier. Centring is what makes the layout absorb a changing row count without any
+special-casing.
 
-| Variant | Region for the grid | Block height | Grid starts at |
-|---|---|---|---|
-| With a recent book | 228–636 (408) | 408 | 228 (exact fit) |
-| No recent book | 124–636 (512) | 408 | 176 |
+| Variant | Region for the grid | Rows | Block height | Grid starts at |
+|---|---|---|---|---|
+| Recent book, OPDS on | 228–636 (408) | 3 | 408 | 228 (exact fit) |
+| Recent book, OPDS off | 228–636 (408) | 2 | 268 | 298 |
+| No recent book, OPDS on | 124–636 (512) | 3 | 408 | 176 |
+| No recent book, OPDS off | 124–636 (512) | 2 | 268 | 246 |
 
 Fixing the tile height rather than stretching to fill keeps one number under
-test across both variants, and centring avoids a 104px hole below the grid.
-The masthead and Settings tiers never move in either variant.
+test across all four. The masthead, Continue Reading and Settings tiers never
+move; the grid is the only thing that does.
 
 ### Why Settings gets its own tier
 
-It is configuration rather than content, so separating it is defensible on its
-own. It also happens to be what makes both menu sizes resolve to exactly three
-grid rows:
+It is configuration rather than content, and it is the one entry a reader never
+wants to hit by accident while reaching for a book. Pinning it to the bottom
+also gives the grid a fixed floor to be measured against, so the grid is the
+only thing that ever moves.
 
-| OPDS | Entries | Index 0 | Grid indices | Grid rows |
+The four compositions:
+
+| Recent book | OPDS | Entries | Grid tiles | Grid rows |
 |---|---|---|---|---|
-| Off | 7 | Continue Reading | 1–5 (five tiles) | 3 (2, 2, 1) |
-| On | 8 | Continue Reading | 1–6 (six tiles) | 3 (2, 2, 2) |
+| Yes | Off | 6 | 4 | 2 |
+| Yes | On | 7 | 5 | 3 (2, 2, 1) |
+| No | Off | 5 | 4 | 2 |
+| No | On | 6 | 5 | 3 (2, 2, 1) |
 
 A lone tile in the final row spans the full width rather than sitting in the
-left column. Identical geometry in both states is far easier to test than a
-layout that reflows, and it means toggling OPDS never moves an existing tile.
+left column, so the grid never ends on a visibly half-empty row.
 
 ## The layout contract
 
@@ -109,13 +116,30 @@ Rather than widen `MenuRowLayout` with a column count and per-tier heights, Home
 moves to a per-index accessor:
 
 ```cpp
-struct HomeMenuComposition {
+namespace MenuLayout {
+struct HomeComposition {
   int tileCount;
   bool leadingWideTile;  // index 0 is Continue Reading, not a grid tile
 };
 
-virtual Rect tileRect(Rect menuArea, int index, HomeMenuComposition composition) const;
+constexpr Rect homeTileRect(const ThemeMetrics& metrics, int pageWidth, int pageHeight,
+                            HomeComposition composition, int index);
+}
 ```
+
+It is a `constexpr` free function in `MenuLayout.h`, not a theme virtual, and
+that is forced by testability rather than preference:
+`test/home_menu_layout/CMakeLists.txt` compiles `HomeMenuLayoutTest.cpp` alone
+and links no theme translation unit, so it can only reach header-inline code.
+Geometry behind a virtual defined in `AlmanacTheme.cpp` would drag
+`GfxRenderer`, `UITheme` and the font tables into the host test to be tested at
+all — which is precisely why `MenuLayout.h` already exists in this shape.
+
+A virtual would also be redundant here. It earns its keep when themes can
+disagree about layout; with the math in one shared function that both
+`AlmanacTheme::drawButtonMenu` and `HomeActivity` call directly, they cannot
+disagree by construction. `Rect`'s constructor gains `constexpr` (it is
+otherwise already a literal type) so the function can return one.
 
 `leadingWideTile` is load-bearing, not decorative. Without it the rule "index 0
 is full width" would make Browse Files full width on a device with no recent
@@ -132,21 +156,15 @@ stopped `HomeActivity` re-deriving row geometry that the theme had already
 decided. A rect list is also a strictly simpler contract than pitch arithmetic:
 there is no step, no first-index, and no page to keep in sync.
 
-Declared as a `BaseTheme` virtual with a uniform-row default (built on the
-existing `getButtonMenuLayout`) and overridden in `AlmanacTheme`. That matches
-the file's established pattern — `BaseTheme` already carries fourteen virtuals
-that `AlmanacTheme` selectively overrides — and keeps the diff free of an
-unrelated refactor of `UITheme::getTheme`'s return type.
-
-`MenuRowLayout` and `getButtonMenuLayout` stay for now; nothing else is worth
-disturbing in this change.
+`MenuRowLayout` and `getButtonMenuLayout` stay for now — other screens still use
+them, and nothing else is worth disturbing in this change.
 
 ## Continue Reading
 
 An earlier note in this session claimed flipping `homeContinueReadingInMenu`
 would be a one-line change. That is no longer accurate and is retracted here:
 the flag inserts `STR_CONTINUE_READING` as an ordinary menu entry
-([HomeActivity.cpp:317](../../../src/activities/home/HomeActivity.cpp)), and
+([HomeActivity.cpp:341-344](../../../src/activities/home/HomeActivity.cpp)), and
 this design wants a bespoke wide tile carrying a progress bar.
 
 The resolution keeps one index space rather than adding a tier outside the menu:
@@ -183,23 +201,42 @@ left-to-right then down, in reading order. `ButtonNavigator` and
 Touch, where present, hit-tests through `tileRect` and therefore gets true 2-D
 selection for free.
 
-## Icons
+## Icons: none, and why
 
-`GfxRenderer::drawIcon` plots every ink pixel with `drawPixel(..., true)`
-([GfxRenderer.cpp:1250](../../../lib/GfxRenderer/GfxRenderer.cpp)), i.e. always
-black, which is why `AlmanacTheme::drawButtonMenu` currently discards its
-`rowIcon` callback — an icon would vanish on a selected tile's black fill.
+The tiles are label-only. The `UIIcon` enum is passed through `drawButtonMenu`
+and `drawList` by every caller but is **never rendered anywhere** — the only
+`drawIcon` call site in the tree is `OpdsBookBrowserActivity.cpp:203` drawing
+`Search24Icon`, and `src/components/icons/` contains exactly two assets,
+`bookmark.h` and `search24.h`. There is no `UIIcon`-to-bitmap mapping.
 
-It gains a defaulted parameter:
+Icon tiles would therefore mean authoring six new 1-bit assets (folder, recent,
+transfer, flights, library, settings) plus the mapping, plus their flash cost.
+That is a change of its own with its own scope check, not a detail of this
+layout. Centred wrapped labels on 217px tiles read perfectly well at 1 bit.
 
-```cpp
-void drawIcon(const uint8_t bitmap[], int x, int y, int size, bool state = true) const;
-```
+This also means `GfxRenderer` needs no change at all. An earlier draft added a
+`bool state` parameter to `drawIcon` so icons could invert on a black fill;
+with no icons to draw, the only white-on-black artwork is the masthead mark,
+and that is handled by generating a **pre-inverted** asset instead. `drawImage`
+blits a 1-bit array in which `bit == 0` is ink, so flipping the bits at
+generation time yields white ink over the masthead's black fill using the
+existing renderer. Not touching a shared library for a single call site is the
+cheaper and narrower answer.
 
-([GfxRenderer.h:228](../../../lib/GfxRenderer/GfxRenderer.h)) Backward
-compatible, and with a single theme in the tree the blast radius is one call
-site. Selected tiles pass `false` so the icon reads white on black, the same
-convention `drawBatteryLightningBolt` already follows.
+## Progress on the Continue Reading tile
+
+Deferred, deliberately. `RecentBook` carries only path, title, author and
+`coverBmpPath` ([RecentBooksStore.h:8-15](../../../src/RecentBooksStore.h)) — no
+progress. Progress lives in `<cachePath>/progress.bin` and every reader loads it
+through its own `loadProgress()` against a cache path that only an *opened*
+book knows. Home would have to either open the book (an EPUB parse on every
+Home render) or duplicate the cache-path hashing.
+
+Neither is worth it for a decorative bar, and both add SD I/O to a screen that
+currently does none. The tile shows the book's title, which is the information
+that actually identifies what Confirm will open. A shared "progress for this
+path" API would make the bar cheap later; that API is the prerequisite, and it
+is out of scope here.
 
 ## The masthead mark
 
@@ -233,10 +270,27 @@ and `BaseTheme::drawList` already does the equivalent per row via
 `truncatedText`. Worst case is seven short-string vectors, transient, freed
 before `displayBuffer` returns. No steady-state RAM and no new buffer.
 
-The Network tile needs a new key — `STR_WIFI_NETWORKS` ("Wi-Fi Networks") is
-the Wi-Fi scan screen's title, not a menu label. Add `STR_MENU_NETWORK` to
-`english.yaml` and regenerate with `scripts/gen_i18n.py`; the other 30
-languages fall back to English until translated.
+No new i18n key is needed. Every tile reuses a string that already exists.
+
+## Network, and why it was dropped
+
+A Network tile was scoped in and then cut, because
+`AlmanacWebServerActivity::onEnter` starts in `MODE_SELECTION` and immediately
+launches `NetworkModeSelectionActivity`
+([AlmanacWebServerActivity.cpp:78-80](../../../src/activities/network/AlmanacWebServerActivity.cpp)).
+The existing **File Transfer** tile therefore already *is* the network entry
+point: it offers Join a Network / Connect to Calibre / Create Hotspot before
+anything else. A Network tile would have opened the same screen under a second
+name.
+
+It would not have been free either. `NetworkModeSelectionActivity` ends with
+`setResult()` + `finish()`, so it is a pushed sub-activity returning a result to
+a caller, not a `replaceActivity` destination. Driving it from Home would mean
+Home reimplementing the result handling `AlmanacWebServerActivity` already owns.
+
+Adding no capability while duplicating an entry point fails `SCOPE.md`'s test,
+so it is out. The layout holds eight tiles without redesign, so a genuinely new
+destination can take the slot whenever one exists.
 
 ## Testing
 
@@ -251,11 +305,17 @@ generalizes rather than being deleted:
   ([AlmanacTheme.h:87](../../../src/components/themes/almanac/AlmanacTheme.h))
   so the selection stroke is included exactly as the existing tests already do.
 - Assert no two rects overlap.
-- Assert the grid is 3 rows in all four compositions, which is what pins the
-  "OPDS never moves a tile" property above.
-- Assert that toggling OPDS alone leaves every surviving tile's rect
-  byte-identical, and that dropping the recent book moves the grid to the
-  second variant's origin and nothing else.
+- Assert the grid row count matches the table above (2 or 3) for each
+  composition, and that grid tile height is 128 in all four — the fixed number
+  the centring rule depends on.
+- Assert the Continue Reading and Settings rects are byte-identical across
+  every composition that contains them. These are the fixed tiers; if either
+  moves, the centring maths has leaked into them.
+- Assert the grid origin matches the table for each composition.
+
+Note what is deliberately *not* asserted: that a given menu entry keeps its
+rect when OPDS is toggled. OPDS is inserted mid-list, so entries after it shift
+one slot along by design. The slots are stable, not the occupants.
 
 That is a stronger invariant than "the last row clears the bar", and it is what
 keeps this bug class dead.
@@ -266,10 +326,15 @@ the host, so label overflow and the masthead mark are checked without flashing.
 
 ## Cost
 
-Drawing code, one defaulted renderer parameter, one i18n key, one regenerated
-logo asset. No new heap buffers, no new task, no steady-state RAM. Flash delta
+Drawing code and one new logo asset. No renderer change, no new i18n keys, no
+new activity, no new heap buffers, no new task, no steady-state RAM. Flash delta
 is expected to be small but is reported as measured, not asserted — the app
 partition is ~85% full.
+
+Removing the cover tile also deletes `HomeActivity`'s cover snapshot buffer, a
+~16 KB transient `malloc` taken on every Home render that stored a recent
+book's cover region. That is a real reduction in peak allocation and in
+fragmentation pressure, not a rounding error.
 
 ## Verification
 
@@ -283,8 +348,12 @@ partition is ~85% full.
 ## Out of scope
 
 - Typography. UI fonts are baked into flash at every size and style.
-- Any new activity. The Network tile opens the existing
-  `NetworkModeSelectionActivity`.
+- Any new activity, and any new menu destination at all (see Network above).
+- A Wi-Fi-only connect flow that does not start the transfer server. That is
+  new capability and needs its own scope check and spec.
+- Tile icons, and the six 1-bit assets plus `UIIcon` mapping they require.
+- A progress bar on the Continue Reading tile, and the shared progress-lookup
+  API it depends on.
 - Landscape. Home renders in forced Portrait; both readers reset to Portrait in
   their own `onExit()`.
 - Sleep and boot screens. They keep the 120px mark.
