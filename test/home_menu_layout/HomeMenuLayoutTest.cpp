@@ -40,7 +40,107 @@ void expectClearOfHints(const ThemeMetrics& metrics, const int lastBottom, const
                                   << hintsTop;
 }
 
+constexpr int kPortraitWidth = 480;
+
+MenuLayout::HomeComposition composition(const bool hasRecentBook, const bool hasOpds) {
+  // Base entries: Browse Files, Recent Books, File Transfer, Nearby Flights, Settings.
+  const int count = 5 + (hasOpds ? 1 : 0) + (hasRecentBook ? 1 : 0);
+  return MenuLayout::HomeComposition{count, hasRecentBook};
+}
+
+bool overlaps(const Rect& a, const Rect& b) {
+  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+}
+
 }  // namespace
+
+// --- Home tile layout (MenuLayout::homeTileRect) -----------------------------
+
+TEST(HomeTileLayout, EveryTileClearsTheMastheadAndHintsBar) {
+  const ThemeMetrics& m = AlmanacMetrics::values;
+  const int hintsTop = MenuLayout::buttonHintsTop(m, kPortraitHeight);
+
+  for (const bool recent : {false, true}) {
+    for (const bool opds : {false, true}) {
+      const auto c = composition(recent, opds);
+      for (int i = 0; i < c.tileCount; i++) {
+        const Rect r = MenuLayout::homeTileRect(m, kPortraitWidth, kPortraitHeight, c, i);
+        EXPECT_GE(r.y - AlmanacTheme::kMenuSelectionReserve, MenuLayout::kHomeMastheadHeight)
+            << "tile " << i << " recent=" << recent << " opds=" << opds;
+        EXPECT_LE(r.y + r.height + AlmanacTheme::kMenuSelectionReserve, hintsTop)
+            << "tile " << i << " recent=" << recent << " opds=" << opds;
+        EXPECT_GE(r.x, m.contentSidePadding);
+        EXPECT_LE(r.x + r.width, kPortraitWidth - m.contentSidePadding);
+      }
+    }
+  }
+}
+
+TEST(HomeTileLayout, NoTwoTilesOverlap) {
+  const ThemeMetrics& m = AlmanacMetrics::values;
+  for (const bool recent : {false, true}) {
+    for (const bool opds : {false, true}) {
+      const auto c = composition(recent, opds);
+      for (int i = 0; i < c.tileCount; i++) {
+        for (int j = i + 1; j < c.tileCount; j++) {
+          const Rect a = MenuLayout::homeTileRect(m, kPortraitWidth, kPortraitHeight, c, i);
+          const Rect b = MenuLayout::homeTileRect(m, kPortraitWidth, kPortraitHeight, c, j);
+          EXPECT_FALSE(overlaps(a, b)) << "tiles " << i << " and " << j << " overlap";
+        }
+      }
+    }
+  }
+}
+
+TEST(HomeTileLayout, GridRowCountAndOriginMatchTheSpec) {
+  const ThemeMetrics& m = AlmanacMetrics::values;
+
+  EXPECT_EQ(MenuLayout::homeGridRowCount(composition(true, true)), 3);
+  EXPECT_EQ(MenuLayout::homeGridRowCount(composition(true, false)), 2);
+  EXPECT_EQ(MenuLayout::homeGridRowCount(composition(false, true)), 3);
+  EXPECT_EQ(MenuLayout::homeGridRowCount(composition(false, false)), 2);
+
+  EXPECT_EQ(MenuLayout::homeGridTop(m, kPortraitHeight, composition(true, true)), 228);
+  EXPECT_EQ(MenuLayout::homeGridTop(m, kPortraitHeight, composition(true, false)), 298);
+  EXPECT_EQ(MenuLayout::homeGridTop(m, kPortraitHeight, composition(false, true)), 176);
+  EXPECT_EQ(MenuLayout::homeGridTop(m, kPortraitHeight, composition(false, false)), 246);
+}
+
+TEST(HomeTileLayout, FixedTiersNeverMove) {
+  const ThemeMetrics& m = AlmanacMetrics::values;
+
+  const Rect crWithOpds = MenuLayout::homeTileRect(m, kPortraitWidth, kPortraitHeight, composition(true, true), 0);
+  const Rect crNoOpds = MenuLayout::homeTileRect(m, kPortraitWidth, kPortraitHeight, composition(true, false), 0);
+  EXPECT_EQ(crWithOpds.y, 124);
+  EXPECT_EQ(crWithOpds.height, MenuLayout::kHomeWideTileHeight);
+  EXPECT_EQ(crNoOpds.y, crWithOpds.y);
+  EXPECT_EQ(crNoOpds.height, crWithOpds.height);
+
+  for (const bool recent : {false, true}) {
+    for (const bool opds : {false, true}) {
+      const auto c = composition(recent, opds);
+      const Rect s = MenuLayout::homeTileRect(m, kPortraitWidth, kPortraitHeight, c, c.tileCount - 1);
+      EXPECT_EQ(s.y, 648) << "recent=" << recent << " opds=" << opds;
+      EXPECT_EQ(s.height, MenuLayout::kHomeWideTileHeight);
+      EXPECT_EQ(s.x, m.contentSidePadding);
+      EXPECT_EQ(s.width, kPortraitWidth - m.contentSidePadding * 2);
+    }
+  }
+}
+
+TEST(HomeTileLayout, LoneTileInFinalRowSpansFullWidth) {
+  const ThemeMetrics& m = AlmanacMetrics::values;
+  // Recent book + OPDS gives 5 grid tiles, so the third row holds exactly one.
+  const auto odd = composition(true, true);
+  const Rect r = MenuLayout::homeTileRect(m, kPortraitWidth, kPortraitHeight, odd, odd.tileCount - 2);
+  EXPECT_EQ(r.x, m.contentSidePadding);
+  EXPECT_EQ(r.width, kPortraitWidth - m.contentSidePadding * 2);
+
+  // 4 grid tiles fill two even rows, so nothing spans.
+  const auto even = composition(true, false);
+  const Rect r2 = MenuLayout::homeTileRect(m, kPortraitWidth, kPortraitHeight, even, even.tileCount - 2);
+  EXPECT_LT(r2.width, kPortraitWidth - m.contentSidePadding * 2);
+}
 
 // --- Almanac -----------------------------------------------------------------
 
