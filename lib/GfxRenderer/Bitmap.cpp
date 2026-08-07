@@ -1,7 +1,10 @@
 #include "Bitmap.h"
 
+#include <Logging.h>
+
 #include <cstdlib>
 #include <cstring>
+#include <new>
 
 // ============================================================================
 // IMAGE PROCESSING OPTIONS
@@ -167,10 +170,26 @@ BmpReaderError Bitmap::parseHeaders() {
   //  - High-color + dithering disabled → simple quantization (no error diffusion)
   const bool highColor = !nativePalette;
   if (highColor && dithering) {
+    // new (std::nothrow), not bare new: under -fno-exceptions a failed bare
+    // new calls abort(), so an oversized cover on a low-heap device would
+    // panic rather than render. Every consumer below already null-checks
+    // these pointers and falls through to plain quantization, so leaving
+    // them null degrades image quality instead -- which is why the invalid
+    // case deletes and nulls rather than trying to continue.
     if (USE_ATKINSON) {
-      atkinsonDitherer = new AtkinsonDitherer(width);
+      atkinsonDitherer = new (std::nothrow) AtkinsonDitherer(width);
+      if (atkinsonDitherer && !atkinsonDitherer->valid()) {
+        delete atkinsonDitherer;
+        atkinsonDitherer = nullptr;
+      }
+      if (!atkinsonDitherer) LOG_ERR("BMP", "OOM: Atkinson ditherer (w=%d); falling back to quantization", width);
     } else {
-      fsDitherer = new FloydSteinbergDitherer(width);
+      fsDitherer = new (std::nothrow) FloydSteinbergDitherer(width);
+      if (fsDitherer && !fsDitherer->valid()) {
+        delete fsDitherer;
+        fsDitherer = nullptr;
+      }
+      if (!fsDitherer) LOG_ERR("BMP", "OOM: Floyd-Steinberg ditherer (w=%d); falling back to quantization", width);
     }
   }
 

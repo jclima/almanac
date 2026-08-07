@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <new>
 
 struct BmpHeader;
 
@@ -24,9 +25,9 @@ void createBmpHeader(BmpHeader* bmpHeader, int width, int height, BmpRowOrder ro
 class Atkinson1BitDitherer {
  public:
   explicit Atkinson1BitDitherer(int width) : width(width) {
-    errorRow0 = new int16_t[width + 4]();  // Current row
-    errorRow1 = new int16_t[width + 4]();  // Next row
-    errorRow2 = new int16_t[width + 4]();  // Row after next
+    errorRow0 = new (std::nothrow) int16_t[width + 4]();  // Current row
+    errorRow1 = new (std::nothrow) int16_t[width + 4]();  // Next row
+    errorRow2 = new (std::nothrow) int16_t[width + 4]();  // Row after next
   }
 
   ~Atkinson1BitDitherer() {
@@ -34,6 +35,17 @@ class Atkinson1BitDitherer {
     delete[] errorRow1;
     delete[] errorRow2;
   }
+
+  // False when any error row failed to allocate. The ctor cannot signal
+  // failure, and with -fno-exceptions a bare `new` would have aborted here
+  // instead; callers check this and fall back to plain quantization.
+  //
+  // Deleting an instance that fails this check is safe: every row pointer is
+  // assigned unconditionally in the ctor body (nothrow yields nullptr rather
+  // than skipping the assignment), and `delete[] nullptr` is a no-op. Do not
+  // "fix" the dtor to guard on valid() -- that would leak the rows that did
+  // allocate.
+  bool valid() const { return errorRow0 != nullptr && errorRow1 != nullptr && errorRow2 != nullptr; }
 
   // EXPLICITLY DELETE THE COPY CONSTRUCTOR
   Atkinson1BitDitherer(const Atkinson1BitDitherer& other) = delete;
@@ -105,9 +117,9 @@ class Atkinson1BitDitherer {
 class AtkinsonDitherer {
  public:
   explicit AtkinsonDitherer(int width) : width(width) {
-    errorRow0 = new int16_t[width + 4]();  // Current row
-    errorRow1 = new int16_t[width + 4]();  // Next row
-    errorRow2 = new int16_t[width + 4]();  // Row after next
+    errorRow0 = new (std::nothrow) int16_t[width + 4]();  // Current row
+    errorRow1 = new (std::nothrow) int16_t[width + 4]();  // Next row
+    errorRow2 = new (std::nothrow) int16_t[width + 4]();  // Row after next
   }
 
   ~AtkinsonDitherer() {
@@ -115,6 +127,17 @@ class AtkinsonDitherer {
     delete[] errorRow1;
     delete[] errorRow2;
   }
+
+  // False when any error row failed to allocate. The ctor cannot signal
+  // failure, and with -fno-exceptions a bare `new` would have aborted here
+  // instead; callers check this and fall back to plain quantization.
+  //
+  // Deleting an instance that fails this check is safe: every row pointer is
+  // assigned unconditionally in the ctor body (nothrow yields nullptr rather
+  // than skipping the assignment), and `delete[] nullptr` is a no-op. Do not
+  // "fix" the dtor to guard on valid() -- that would leak the rows that did
+  // allocate.
+  bool valid() const { return errorRow0 != nullptr && errorRow1 != nullptr && errorRow2 != nullptr; }
   // **1. EXPLICITLY DELETE THE COPY CONSTRUCTOR**
   AtkinsonDitherer(const AtkinsonDitherer& other) = delete;
 
@@ -206,14 +229,25 @@ class AtkinsonDitherer {
 class FloydSteinbergDitherer {
  public:
   explicit FloydSteinbergDitherer(int width) : width(width), rowCount(0) {
-    errorCurRow = new int16_t[width + 2]();  // +2 for boundary handling
-    errorNextRow = new int16_t[width + 2]();
+    errorCurRow = new (std::nothrow) int16_t[width + 2]();  // +2 for boundary handling
+    errorNextRow = new (std::nothrow) int16_t[width + 2]();
   }
 
   ~FloydSteinbergDitherer() {
     delete[] errorCurRow;
     delete[] errorNextRow;
   }
+
+  // False when any error row failed to allocate. The ctor cannot signal
+  // failure, and with -fno-exceptions a bare `new` would have aborted here
+  // instead; callers check this and fall back to plain quantization.
+  //
+  // Deleting an instance that fails this check is safe: every row pointer is
+  // assigned unconditionally in the ctor body (nothrow yields nullptr rather
+  // than skipping the assignment), and `delete[] nullptr` is a no-op. Do not
+  // "fix" the dtor to guard on valid() -- that would leak the rows that did
+  // allocate.
+  bool valid() const { return errorCurRow != nullptr && errorNextRow != nullptr; }
 
   // **1. EXPLICITLY DELETE THE COPY CONSTRUCTOR**
   FloydSteinbergDitherer(const FloydSteinbergDitherer& other) = delete;
