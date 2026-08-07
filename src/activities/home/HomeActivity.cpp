@@ -1,13 +1,8 @@
 #include "HomeActivity.h"
 
-#include <Bitmap.h>
-#include <Epub.h>
-#include <FsHelpers.h>
 #include <GfxRenderer.h>
-#include <HalStorage.h>
 #include <I18n.h>
 #include <Utf8.h>
-#include <Xtc.h>
 
 #include <cstring>
 #include <vector>
@@ -21,30 +16,18 @@
 #include "components/themes/MenuLayout.h"
 #include "fontIds.h"
 
-Rect HomeActivity::menuRect() const {
-  // Height is the run from the menu's own top edge down to the button-hints
-  // bar, so themes can size their rows against the space that actually exists.
-  // rect.y already accounts for everything drawn above the menu, so this is
-  // exactly "don't collide with the bar". availableHeight clamps to >= 0:
-  // Home always renders in forced Portrait in practice (EpubReader and
-  // TxtReader both reset to Portrait in their own onExit() before any other
-  // activity can render), but nothing here re-asserts that, and a negative
-  // height would feed the theme's row-fit arithmetic.
-  const auto& metrics = UITheme::getInstance().getMetrics();
-  return Rect{0, MenuLayout::menuTop(metrics), renderer.getScreenWidth(),
-              MenuLayout::availableHeight(metrics, renderer.getScreenHeight())};
+MenuLayout::HomeComposition HomeActivity::menuComposition() const {
+  return MenuLayout::HomeComposition{getMenuItemCount(), hasContinueReadingTile()};
 }
 
-MenuLayout::HomeComposition HomeActivity::menuComposition() const {
-  const auto& metrics = UITheme::getInstance().getMetrics();
-  const bool hasContinueReading = metrics.homeContinueReadingInMenu && !recentBooks.empty();
-  return MenuLayout::HomeComposition{getMenuItemCount(), hasContinueReading};
+bool HomeActivity::hasContinueReadingTile() const {
+  return UITheme::getInstance().getMetrics().homeContinueReadingInMenu && !recentBooks.empty();
 }
 
 int HomeActivity::getMenuItemCount() const {
   int count = 5;  // File Browser, Recents, File transfer, Nearby Flights, Settings
-  if (!recentBooks.empty()) {
-    count += recentBooks.size();
+  if (hasContinueReadingTile()) {
+    count++;
   }
   if (hasOpdsServers) {
     count++;
@@ -72,63 +55,6 @@ void HomeActivity::loadRecentBooks(int maxBooks) {
   }
 }
 
-void HomeActivity::loadRecentCovers(int coverHeight) {
-  recentsLoading = true;
-  bool showingLoading = false;
-  Rect popupRect;
-
-  int progress = 0;
-  for (RecentBook& book : recentBooks) {
-    if (!book.coverBmpPath.empty()) {
-      std::string coverPath = UITheme::getCoverThumbPath(book.coverBmpPath, coverHeight);
-      if (!Storage.exists(coverPath.c_str())) {
-        // If epub, try to load the metadata for title/author and cover
-        if (FsHelpers::hasEpubExtension(book.path)) {
-          Epub epub(book.path, "/.crosspoint");
-          // Skip loading css since we only need metadata here
-          epub.load(false, true);
-
-          // Try to generate thumbnail image for Continue Reading card
-          if (!showingLoading) {
-            showingLoading = true;
-            popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
-          }
-          GUI.fillPopupProgress(renderer, popupRect, 10 + progress * (90 / recentBooks.size()));
-          bool success = epub.generateThumbBmp(coverHeight);
-          if (!success) {
-            RECENT_BOOKS.updateBook(book.path, book.title, book.author, "");
-            book.coverBmpPath = "";
-          }
-          coverRendered = false;
-          requestUpdate();
-        } else if (FsHelpers::hasXtcExtension(book.path)) {
-          // Handle XTC file
-          Xtc xtc(book.path, "/.crosspoint");
-          if (xtc.load()) {
-            // Try to generate thumbnail image for Continue Reading card
-            if (!showingLoading) {
-              showingLoading = true;
-              popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
-            }
-            GUI.fillPopupProgress(renderer, popupRect, 10 + progress * (90 / recentBooks.size()));
-            bool success = xtc.generateThumbBmp(coverHeight);
-            if (!success) {
-              RECENT_BOOKS.updateBook(book.path, book.title, book.author, "");
-              book.coverBmpPath = "";
-            }
-            coverRendered = false;
-            requestUpdate();
-          }
-        }
-      }
-    }
-    progress++;
-  }
-
-  recentsLoaded = true;
-  recentsLoading = false;
-}
-
 void HomeActivity::onEnter() {
   Activity::onEnter();
 
@@ -137,66 +63,31 @@ void HomeActivity::onEnter() {
   const auto& metrics = UITheme::getInstance().getMetrics();
   loadRecentBooks(metrics.homeRecentBooksCount);
 
-  const auto base = static_cast<int>(recentBooks.size());
+  // Continue Reading is a single tile (index 0) when present, never one tile
+  // per recent book -- see hasContinueReadingTile().
+  const int base = hasContinueReadingTile() ? 1 : 0;
   selectorIndex = initialMenuItem == HomeMenuItem::NONE ? 0 : base + menuItemToIndex(initialMenuItem, hasOpdsServers);
 
   // Trigger first update
   requestUpdate();
 }
 
-void HomeActivity::onExit() {
-  Activity::onExit();
-
-  // Free the stored cover buffer if any
-  freeCoverBuffer();
-}
-
-bool HomeActivity::storeCoverBuffer() {
-  // render() must have already set the cover rect; without it we'd be back to
-  // cloning the whole framebuffer.
-  if (coverRectW <= 0 || coverRectH <= 0) return false;
-  freeCoverBuffer();
-  const size_t needed = renderer.getRegionByteSize(coverRectX, coverRectY, coverRectW, coverRectH);
-  if (needed == 0) return false;
-  coverBuffer = static_cast<uint8_t*>(malloc(needed));
-  if (!coverBuffer) {
-    LOG_ERR("HOME", "OOM: cover buffer (%u bytes)", (unsigned)needed);
-    return false;
-  }
-  coverBufferSize = needed;
-  if (!renderer.copyRegionToBuffer(coverRectX, coverRectY, coverRectW, coverRectH, coverBuffer, coverBufferSize)) {
-    free(coverBuffer);
-    coverBuffer = nullptr;
-    coverBufferSize = 0;
-    return false;
-  }
-  return true;
-}
-
-bool HomeActivity::restoreCoverBuffer() {
-  if (!coverBuffer || coverRectW <= 0 || coverRectH <= 0) return false;
-  return renderer.copyBufferToRegion(coverRectX, coverRectY, coverRectW, coverRectH, coverBuffer, coverBufferSize);
-}
-
-void HomeActivity::freeCoverBuffer() {
-  if (coverBuffer) {
-    free(coverBuffer);
-    coverBuffer = nullptr;
-  }
-  coverBufferSize = 0;
-  coverBufferStored = false;
-}
+void HomeActivity::onExit() { Activity::onExit(); }
 
 void HomeActivity::loop() {
   const int menuCount = getMenuItemCount();
   const auto& metrics = UITheme::getInstance().getMetrics();
 
   auto activateSelection = [this] {
-    if (selectorIndex < recentBooks.size()) {
-      onSelectBook(recentBooks[selectorIndex].path);
+    // Continue Reading is always exactly one tile (index 0), never one tile
+    // per recent book -- see hasContinueReadingTile(). Gating on the same
+    // helper render() and getMenuItemCount() use is what keeps this in step
+    // with them even if that condition ever changes.
+    if (hasContinueReadingTile() && selectorIndex == 0) {
+      onSelectBook(recentBooks[0].path);
       return;
     }
-    const int menuIndex = selectorIndex - static_cast<int>(recentBooks.size());
+    const int menuIndex = selectorIndex - (hasContinueReadingTile() ? 1 : 0);
     switch (indexToMenuItem(menuIndex, hasOpdsServers)) {
       case HomeMenuItem::FILE_BROWSER:
         onFileBrowserOpen();
@@ -293,7 +184,6 @@ void HomeActivity::loop() {
 }
 
 void HomeActivity::render(RenderLock&&) {
-  const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
 
@@ -304,23 +194,26 @@ void HomeActivity::render(RenderLock&&) {
   // Build menu items dynamically
   std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_FILE_TRANSFER),
                                         tr(STR_NEARBY_FLIGHTS), tr(STR_SETTINGS_TITLE)};
-  std::vector<UIIcon> menuIcons = {Folder, Recent, Transfer, Wifi, Settings};
 
   if (hasOpdsServers) {
     menuItems.insert(menuItems.begin() + 2, tr(STR_OPDS_BROWSER));
-    menuIcons.insert(menuIcons.begin() + 2, Library);
   }
 
-  if (metrics.homeContinueReadingInMenu && !recentBooks.empty()) {
-    // Insert Continue Reading at the top if enabled in theme
+  if (hasContinueReadingTile()) {
+    // Insert Continue Reading at the top -- same condition getMenuItemCount()
+    // (via menuComposition()) uses, so the list built here and the tile count
+    // it is indexed with agree by construction.
     menuItems.insert(menuItems.begin(), tr(STR_CONTINUE_READING));
-    menuIcons.insert(menuIcons.begin(), Book);
   }
 
   // Same composition the hit-test in loop() uses, so drawn tiles and touch
-  // targets cannot disagree.
-  GUI.drawHomeMenu(renderer, pageWidth, pageHeight, menuComposition(), selectorIndex,
-                   [&menuItems](int index) { return std::string(menuItems[index]); });
+  // targets cannot disagree. The bounds check is a second line of defence,
+  // not a substitute for that agreement: AlmanacTheme::drawHomeMenu has no
+  // way to enforce it itself, so if tileCount and menuItems ever did drift
+  // apart, this turns what would be an out-of-bounds read into an empty label.
+  GUI.drawHomeMenu(renderer, pageWidth, pageHeight, menuComposition(), selectorIndex, [&menuItems](int index) {
+    return index >= 0 && index < static_cast<int>(menuItems.size()) ? std::string(menuItems[index]) : std::string();
+  });
 
   const auto labels = mappedInput.mapLabels(recentBooks.empty() ? "" : tr(STR_RESUME), tr(STR_SELECT), tr(STR_DIR_UP),
                                             tr(STR_DIR_DOWN));

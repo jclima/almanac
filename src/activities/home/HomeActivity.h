@@ -8,29 +8,15 @@
 #include "util/ButtonNavigator.h"
 
 struct RecentBook;
-struct Rect;
 
 class HomeActivity final : public Activity {
   ButtonNavigator buttonNavigator;
   int selectorIndex = 0;
-  bool recentsLoading = false;
-  bool recentsLoaded = false;
   bool firstRenderDone = false;
   bool hasOpdsServers = false;
-  bool coverRendered = false;      // Track if cover has been rendered once
-  bool coverBufferStored = false;  // Track if cover buffer is stored
   // Home can be entered while Back is still held (e.g. leaving Settings with
   // Back): ignore that stale release until a fresh press is seen here.
   bool backPressSeen = false;
-  uint8_t* coverBuffer = nullptr;  // HomeActivity's own buffer for cover image
-  size_t coverBufferSize = 0;      // Bytes allocated to coverBuffer
-  // Logical rect last passed to drawRecentBookCover. The cover snapshot only
-  // needs to cover this region, not the entire framebuffer, so we cache the
-  // tile instead of all 48 KB. Set in render() before the call.
-  int coverRectX = 0;
-  int coverRectY = 0;
-  int coverRectW = 0;
-  int coverRectH = 0;
   std::vector<RecentBook> recentBooks;
   const HomeMenuItem initialMenuItem;
 
@@ -70,27 +56,22 @@ class HomeActivity final : public Activity {
   void onOpdsBrowserOpen();
   void onNearbyFlightsOpen();
 
-  // The rect handed to drawButtonMenu. render() and loop() share it so the
-  // drawn rows and the touch hit-test cannot disagree -- previously each
-  // derived the geometry separately and only a comment held them in step.
-  //
-  // Its height depends on buttonHintsHeight, which getMetrics() zeroes on
-  // touch hardware (there is no hints bar to draw, so BaseTheme::drawButtonHints
-  // returns early too). Reading it live rather than caching is what makes that
-  // work rather than something to guard against: both the draw and the
-  // hit-test see the same adjusted value, so a touch device simply gets a
-  // taller menu and no bar to avoid.
-  Rect menuRect() const;
-
   // Shared by render() and loop() so drawn tiles and touch targets agree.
   MenuLayout::HomeComposition menuComposition() const;
 
+  // Single source of truth for whether tile 0 is the Continue Reading tile.
+  // getMenuItemCount()'s count, menuComposition()'s leadingWideTile, render()'s
+  // menuItems, onEnter()'s initial selectorIndex, and loop()'s
+  // activateSelection all have to agree on this or they drift apart --
+  // AlmanacTheme::drawHomeMenu indexes menuItems[i] for i in [0, tileCount)
+  // with no bounds check, so a count that disagrees with the list is an
+  // out-of-bounds read, not just a cosmetic bug. Every one of those sites
+  // reads this rather than re-deriving metrics.homeContinueReadingInMenu &&
+  // !recentBooks.empty() locally.
+  bool hasContinueReadingTile() const;
+
   int getMenuItemCount() const;
-  bool storeCoverBuffer();    // Store frame buffer for cover image
-  bool restoreCoverBuffer();  // Restore frame buffer from stored cover
-  void freeCoverBuffer();     // Free the stored cover buffer
   void loadRecentBooks(int maxBooks);
-  void loadRecentCovers(int coverHeight);
 
  public:
   explicit HomeActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
