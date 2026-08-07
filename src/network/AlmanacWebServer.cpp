@@ -332,6 +332,12 @@ void AlmanacWebServer::handleClient() {
       if (len > 0) {
         buffer[len] = '\0';
         if (strcmp(buffer, "hello") == 0) {
+          // "crosspoint" here is a WIRE IDENTIFIER, not branding: this is the
+          // discovery reply the CrossPoint Reader Calibre plugin looks for
+          // (see USER_GUIDE.md -- Almanac uses that plugin rather than
+          // shipping its own). Renaming it to "almanac" would leave the device
+          // undiscoverable in Calibre. Kept deliberately, for the same reason
+          // the /.crosspoint/ cache directory keeps its name.
           String hostname = WiFi.getHostname();
           if (hostname.isEmpty()) {
             hostname = "crosspoint";

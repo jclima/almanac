@@ -7,6 +7,7 @@
 #include <WiFi.h>
 
 #include <cstddef>
+#include <new>
 
 #include "MappedInputManager.h"
 #include "NetworkModeSelectionActivity.h"
@@ -20,9 +21,9 @@
 
 namespace {
 // AP Mode configuration
-constexpr const char* AP_SSID = "CrossPoint-Reader";
+constexpr const char* AP_SSID = "Almanac";
 constexpr const char* AP_PASSWORD = nullptr;  // Open network for ease of use
-constexpr const char* AP_HOSTNAME = "crosspoint";
+constexpr const char* AP_HOSTNAME = "almanac";
 constexpr uint8_t AP_CHANNEL = 1;
 constexpr uint8_t AP_MAX_CONNECTIONS = 4;
 constexpr int QR_CODE_WIDTH = 198;
@@ -231,10 +232,19 @@ void AlmanacWebServerActivity::startAccessPoint() {
   // Start DNS server for captive portal behavior
   // This redirects all DNS queries to our IP, making any domain typed resolve to us
   stopDnsServer();
-  dnsServer = new DNSServer();
-  dnsServer->setErrorReplyCode(DNSReplyCode::NoError);
-  dnsServer->start(DNS_PORT, "*", apIP);
-  LOG_DBG("WEBACT", "DNS server started for captive portal");
+  // new (std::nothrow), not bare new: with -fno-exceptions a failed bare new
+  // calls abort() rather than returning nullptr, so an OOM here would panic
+  // the device instead of degrading. The captive portal is a convenience --
+  // the web UI is still reachable by IP without it -- so a null DNS server is
+  // recoverable and worth continuing on.
+  dnsServer = new (std::nothrow) DNSServer();
+  if (dnsServer) {
+    dnsServer->setErrorReplyCode(DNSReplyCode::NoError);
+    dnsServer->start(DNS_PORT, "*", apIP);
+    LOG_DBG("WEBACT", "DNS server started for captive portal");
+  } else {
+    LOG_ERR("WEBACT", "OOM: DNSServer; captive portal disabled, web UI still reachable by IP");
+  }
 
   LOG_DBG("WEBACT", "Free heap after AP start: %d bytes", ESP.getFreeHeap());
 
