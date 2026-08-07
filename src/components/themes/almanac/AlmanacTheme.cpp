@@ -3,6 +3,7 @@
 #include <GfxRenderer.h>
 #include <HalGPIO.h>
 #include <HalPowerManager.h>
+#include <I18n.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -12,6 +13,7 @@
 #include "components/UITheme.h"
 #include "components/themes/MenuLayout.h"
 #include "fontIds.h"
+#include "images/Logo64Inv.h"
 
 // Internal constants
 namespace {
@@ -515,5 +517,66 @@ void AlmanacTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCo
     const int lineHeight = renderer.getLineHeight(UI_10_FONT_ID);
     const int textY = tileY + (tileHeight - lineHeight) / 2;
     renderer.drawText(UI_10_FONT_ID, textX, textY, label, !selected);
+  }
+}
+
+void AlmanacTheme::drawHomeMasthead(GfxRenderer& renderer, const Rect rect) const {
+  renderer.fillRect(rect.x, rect.y, rect.width, rect.height, true);
+
+  constexpr int kMarkSize = 64;
+  const int sidePadding = AlmanacMetrics::values.contentSidePadding;
+  // x must stay byte-aligned: drawImage is a byte-aligned blit and snaps to
+  // 8px along the rotated axis. contentSidePadding is 16, which is aligned.
+  const int markX = rect.x + sidePadding;
+  const int markY = rect.y + (rect.height - kMarkSize) / 2;
+  renderer.drawImage(Logo64Inv, markX, markY, kMarkSize, kMarkSize);
+
+  const int wordmarkX = markX + kMarkSize + sidePadding;
+  const int wordmarkY = rect.y + (rect.height - renderer.getLineHeight(UI_12_FONT_ID)) / 2;
+  renderer.drawText(UI_12_FONT_ID, wordmarkX, wordmarkY, tr(STR_APP_NAME), false, EpdFontFamily::BOLD);
+
+  // Battery, right-aligned, white on the bar. BaseTheme::drawBatteryRight
+  // cannot be reused here for the same reason drawHeader avoids it: its
+  // casing helper is hardcoded to black ink. See drawBatteryPictogramWhite.
+  const bool showPercentage = SETTINGS.hideBatteryPercentage != AlmanacSettings::HIDE_BATTERY_PERCENTAGE::HIDE_ALWAYS;
+  const int smallTextY = rect.y + (rect.height - renderer.getLineHeight(SMALL_FONT_ID)) / 2;
+  const int rightEdge = rect.x + rect.width - sidePadding;
+  if (showPercentage) {
+    const std::string batteryText = std::to_string(powerManager.getBatteryPercentage()) + "%";
+    const int textWidth = renderer.getTextWidth(SMALL_FONT_ID, batteryText.c_str());
+    renderer.drawText(SMALL_FONT_ID, rightEdge - textWidth, smallTextY, batteryText.c_str(), false);
+  } else {
+    const int iconWidth = AlmanacMetrics::values.batteryWidth;
+    const int iconHeight = AlmanacMetrics::values.batteryHeight;
+    drawBatteryPictogramWhite(renderer, rightEdge - iconWidth,
+                              smallTextY + (renderer.getLineHeight(SMALL_FONT_ID) - iconHeight) / 2, iconWidth,
+                              iconHeight, powerManager.getBatteryPercentage());
+  }
+}
+
+void AlmanacTheme::drawHomeMenu(GfxRenderer& renderer, const int pageWidth, const int pageHeight,
+                                const MenuLayout::HomeComposition composition, const int selectedIndex,
+                                const std::function<std::string(int index)>& tileLabel) const {
+  for (int i = 0; i < composition.tileCount; i++) {
+    const Rect tile = MenuLayout::homeTileRect(AlmanacMetrics::values, pageWidth, pageHeight, composition, i);
+    const bool selected = i == selectedIndex;
+
+    if (selected) {
+      // Same two-level emphasis the list selection uses: filled, plus a
+      // heavier stroke outside it with a white gap between the two.
+      renderer.fillRect(tile.x, tile.y, tile.width, tile.height, true);
+      renderer.drawRect(tile.x - kSelectionStroke, tile.y - kSelectionStroke, tile.width + kSelectionStroke * 2 - 1,
+                        tile.height + kSelectionStroke * 2 - 1, kSelectionStrokeWidth, true);
+    } else {
+      renderer.drawRect(tile.x, tile.y, tile.width - 1, tile.height - 1, kMenuTileStroke, true);
+    }
+
+    // Wrapped to two lines rather than truncated: the longest
+    // STR_MENU_RECENT_BOOKS translation is ~23 characters, which does not fit
+    // a 217px tile on one line, and "Recent Bo..." is worse than two lines.
+    const std::string label = tileLabel(i);
+    const int inset = AlmanacMetrics::values.contentSidePadding / 2;
+    UITheme::drawCenteredWrappedText(renderer, Rect{tile.x + inset, tile.y, tile.width - inset * 2, tile.height},
+                                     UI_10_FONT_ID, label.c_str(), 2, !selected);
   }
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "components/themes/BaseTheme.h"
+#include "components/themes/MenuLayout.h"
 
 class GfxRenderer;
 
@@ -115,4 +116,14 @@ class AlmanacTheme final : public BaseTheme {
   void drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                       const std::function<std::string(int index)>& buttonLabel,
                       const std::function<UIIcon(int index)>& rowIcon) const override;
+
+  // Home's brand bar. Home-specific rather than a drawHeader variant: it
+  // carries the mark and no title, and its height is a layout tier rather
+  // than a ThemeMetrics value.
+  void drawHomeMasthead(GfxRenderer& renderer, Rect rect) const;
+
+  // Home's tiered tile menu. Takes the composition rather than deriving it,
+  // because only HomeActivity knows whether a recent book exists.
+  void drawHomeMenu(GfxRenderer& renderer, int pageWidth, int pageHeight, MenuLayout::HomeComposition composition,
+                    int selectedIndex, const std::function<std::string(int index)>& tileLabel) const;
 };
