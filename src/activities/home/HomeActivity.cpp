@@ -35,6 +35,12 @@ Rect HomeActivity::menuRect() const {
               MenuLayout::availableHeight(metrics, renderer.getScreenHeight())};
 }
 
+MenuLayout::HomeComposition HomeActivity::menuComposition() const {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const bool hasContinueReading = metrics.homeContinueReadingInMenu && !recentBooks.empty();
+  return MenuLayout::HomeComposition{getMenuItemCount(), hasContinueReading};
+}
+
 int HomeActivity::getMenuItemCount() const {
   int count = 5;  // File Browser, Recents, File transfer, Nearby Flights, Settings
   if (!recentBooks.empty()) {
@@ -248,56 +254,36 @@ void HomeActivity::loop() {
     return;
   }
 
+  // Hit-test against the same tile rects the theme drew from: homeTileRect
+  // fed the same UITheme::getInstance().getMetrics() result (metrics, already
+  // bound above) and the same composition, so drawn tiles and touch targets
+  // cannot drift apart.
+  const auto composition = menuComposition();
+  const auto tileAt = [&](const int px, const int py, int& index) {
+    for (int i = 0; i < composition.tileCount; i++) {
+      const Rect t =
+          MenuLayout::homeTileRect(metrics, renderer.getScreenWidth(), renderer.getScreenHeight(), composition, i);
+      if (px >= t.x && px < t.x + t.width && py >= t.y && py < t.y + t.height) {
+        index = i;
+        return true;
+      }
+    }
+    return false;
+  };
+
   int tx = 0;
   int ty = 0;
-  if (!recentBooks.empty() && mappedInput.wasScreenTouchDown(tx, ty) && tx >= 0 && tx < renderer.getScreenWidth() &&
-      ty >= metrics.homeTopPadding && ty < metrics.homeTopPadding + metrics.homeCoverTileHeight) {
-    if (selectorIndex != 0) {
-      selectorIndex = 0;
+  int touchedIndex = -1;
+  if (mappedInput.wasScreenTouchDown(tx, ty) && tileAt(tx, ty, touchedIndex)) {
+    if (selectorIndex != touchedIndex) {
+      selectorIndex = touchedIndex;
       requestUpdate();
     }
     return;
   }
-
-  if (!recentBooks.empty() &&
-      mappedInput.wasTapInRect(0, metrics.homeTopPadding, renderer.getScreenWidth(), metrics.homeCoverTileHeight)) {
-    selectorIndex = 0;
+  if (mappedInput.wasScreenTapped(tx, ty) && tileAt(tx, ty, touchedIndex)) {
+    selectorIndex = touchedIndex;
     activateSelection();
-    return;
-  }
-
-  const int renderedMenuSelection =
-      metrics.homeContinueReadingInMenu ? selectorIndex : selectorIndex - static_cast<int>(recentBooks.size());
-  const int renderedMenuCount =
-      menuCount - (metrics.homeContinueReadingInMenu ? 0 : static_cast<int>(recentBooks.size()));
-  // Hit-test against what the theme actually drew. Row height and pitch are
-  // the theme's call, not this activity's -- Almanac compresses its gaps to
-  // fit the rect and reserves space for its selection stroke -- so
-  // re-deriving any of it from ThemeMetrics drifts away from the rows on
-  // screen.
-  //
-  // renderedMenuSelection is passed, not selectorIndex, so it shares an index
-  // space with the returned firstIndex. Almanac never paginates
-  // (firstIndex == 0 today), but keeping both in rendered space is what
-  // would keep a future paginating layout correct without further changes
-  // here.
-  const MenuRowLayout menuLayout =
-      GUI.getButtonMenuLayout(renderer, menuRect(), renderedMenuCount, renderedMenuSelection);
-  int menuRow = -1;
-  const auto menuTouch = mappedInput.rowTouch(menuRow, menuLayout.top, menuLayout.rowStep, menuLayout.visibleCount, 0,
-                                              INT32_MAX, menuLayout.rowHeight);
-  if (menuTouch != MappedInputManager::RowTouch::None) {
-    const int touchedIndex = menuLayout.firstIndex + menuRow +
-                             (metrics.homeContinueReadingInMenu ? 0 : static_cast<int>(recentBooks.size()));
-    if (menuTouch == MappedInputManager::RowTouch::Down) {
-      if (selectorIndex != touchedIndex) {
-        selectorIndex = touchedIndex;
-        requestUpdate();
-      }
-    } else {
-      selectorIndex = touchedIndex;
-      activateSelection();
-    }
     return;
   }
 
@@ -309,24 +295,11 @@ void HomeActivity::loop() {
 void HomeActivity::render(RenderLock&&) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
+  const auto pageHeight = renderer.getScreenHeight();
 
   renderer.clearScreen();
-  bool bufferRestored = coverBufferStored && restoreCoverBuffer();
 
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding},
-                 metrics.homeContinueReadingInMenu && !recentBooks.empty() ? recentBooks[0].title.c_str() : nullptr);
-
-  // Record the tile rect so storeCoverBuffer (called from the theme) knows
-  // which sub-region of the framebuffer to snapshot. ~16 KB in Portrait
-  // instead of the 48 KB full framebuffer the previous bind captured.
-  coverRectX = 0;
-  coverRectY = metrics.homeTopPadding;
-  coverRectW = pageWidth;
-  coverRectH = metrics.homeCoverTileHeight;
-
-  GUI.drawRecentBookCover(renderer, Rect{0, metrics.homeTopPadding, pageWidth, metrics.homeCoverTileHeight},
-                          recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,
-                          std::bind(&HomeActivity::storeCoverBuffer, this));
+  GUI.drawHomeMasthead(renderer, Rect{0, 0, pageWidth, MenuLayout::kHomeMastheadHeight});
 
   // Build menu items dynamically
   std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_FILE_TRANSFER),
@@ -344,13 +317,10 @@ void HomeActivity::render(RenderLock&&) {
     menuIcons.insert(menuIcons.begin(), Book);
   }
 
-  // Same rect the hit-test in loop() uses, so drawn rows and touch targets
-  // cannot disagree.
-  GUI.drawButtonMenu(
-      renderer, menuRect(), static_cast<int>(menuItems.size()),
-      metrics.homeContinueReadingInMenu ? selectorIndex : selectorIndex - recentBooks.size(),
-      [&menuItems](int index) { return std::string(menuItems[index]); },
-      [&menuIcons](int index) { return menuIcons[index]; });
+  // Same composition the hit-test in loop() uses, so drawn tiles and touch
+  // targets cannot disagree.
+  GUI.drawHomeMenu(renderer, pageWidth, pageHeight, menuComposition(), selectorIndex,
+                   [&menuItems](int index) { return std::string(menuItems[index]); });
 
   const auto labels = mappedInput.mapLabels(recentBooks.empty() ? "" : tr(STR_RESUME), tr(STR_SELECT), tr(STR_DIR_UP),
                                             tr(STR_DIR_DOWN));
@@ -361,9 +331,6 @@ void HomeActivity::render(RenderLock&&) {
   if (!firstRenderDone) {
     firstRenderDone = true;
     requestUpdate();
-  } else if (!recentsLoaded && !recentsLoading) {
-    recentsLoading = true;
-    loadRecentCovers(metrics.homeCoverHeight);
   }
 }
 

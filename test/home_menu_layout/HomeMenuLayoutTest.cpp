@@ -143,6 +143,14 @@ TEST(HomeTileLayout, LoneTileInFinalRowSpansFullWidth) {
 }
 
 // --- Almanac -----------------------------------------------------------------
+//
+// These tests exercise AlmanacTheme::drawButtonMenu / getButtonMenuLayout
+// directly through MenuLayout's row-fitting arithmetic. HomeActivity no
+// longer calls either -- Home's menu draws via MenuLayout::homeTileRect's
+// fixed-height tile grid instead (see the HomeTileLayout tests above), so
+// these no longer describe what Home puts on screen. They stay because the
+// row-fitting mechanism they exercise is still compiled (AlmanacTheme
+// overrides both virtuals) and is still worth pinning on its own terms.
 
 // Almanac's hints bar is 8px taller than BaseMetrics', and its selected tile
 // draws a stroke kMenuSelectionReserve px OUTSIDE the fill, so the last row
@@ -161,16 +169,27 @@ int lastRowBottomAlmanac(const int rowCount) {
 TEST(HomeMenuLayout, AlmanacFitsWithoutOpds) {
   const auto& m = AlmanacMetrics::values;
   const int count = menuItemCount(m, true, false);
-  EXPECT_EQ(count, 5);
+  EXPECT_EQ(count, 6);
   // The selection stroke must clear the bar too, not just the tile.
-  expectClearOfHints(m, lastRowBottomAlmanac(count) + AlmanacTheme::kMenuSelectionReserve, "Almanac 5 items");
+  expectClearOfHints(m, lastRowBottomAlmanac(count) + AlmanacTheme::kMenuSelectionReserve, "Almanac 6 items");
 }
 
-TEST(HomeMenuLayout, AlmanacFitsWithOpds) {
+// AlmanacMetrics hosts Continue Reading in the menu (homeContinueReadingInMenu
+// = true), so a recent book plus an OPDS server pushes the row-menu formula to
+// 7 items -- one past what AlmanacFitsWithoutOpds's 6 fit via gap compression
+// alone. Row-fitting genuinely cannot seat a 7th row in this budget: this pins
+// that impossibility rather than a fit, because it is the reason Home draws
+// its menu via MenuLayout::homeTileRect's fixed-height tile grid instead of
+// AlmanacTheme::drawButtonMenu -- nothing calls the latter with Home's full
+// item count anymore.
+TEST(HomeMenuLayout, AlmanacRowFittingCannotSeatSevenItems) {
   const auto& m = AlmanacMetrics::values;
+  EXPECT_TRUE(m.homeContinueReadingInMenu);
   const int count = menuItemCount(m, true, true);
-  EXPECT_EQ(count, 6);
-  expectClearOfHints(m, lastRowBottomAlmanac(count) + AlmanacTheme::kMenuSelectionReserve, "Almanac 6 items");
+  EXPECT_EQ(count, 7);
+  const int hintsTop = MenuLayout::buttonHintsTop(m, kPortraitHeight);
+  const int lastBottom = lastRowBottomAlmanac(count) + AlmanacTheme::kMenuSelectionReserve;
+  EXPECT_GT(lastBottom, hintsTop) << "expected row-fitting to overflow the hints bar at 7 items, not fit";
 }
 
 // Red/green for the reserve itself: at 6 rows, budgeting only the tiles leaves
@@ -218,17 +237,19 @@ TEST(HomeMenuLayout, AvailableHeightSpansMenuTopToHintsBar) {
 }
 
 // fittedRowStep only compresses gaps -- it floors at rowHeight and never
-// shrinks a row. That is sufficient precisely because the menu cannot grow
-// past 6 rows: Almanac keeps Continue Reading out of the menu (the recent book
-// rides above it), leaving 5 fixed entries plus OPDS. If a theme ever flips
-// homeContinueReadingInMenu, gap compression alone stops being enough and the
-// fit needs a row-shrinking tier -- this pins the assumption so that change
-// fails here rather than on a device.
-TEST(HomeMenuLayout, MenuCannotExceedSixRows) {
-  for (const auto& m : {BaseMetrics::values, AlmanacMetrics::values}) {
-    EXPECT_FALSE(m.homeContinueReadingInMenu);
-    EXPECT_EQ(menuItemCount(m, true, true), 6);
-  }
+// shrinks a row. That was sufficient for both metrics tables while neither put
+// Continue Reading in the menu, capping both at 6 rows (5 fixed entries plus
+// OPDS). AlmanacMetrics has since flipped homeContinueReadingInMenu to true;
+// gap compression alone is no longer enough at its resulting 7 rows (see
+// AlmanacRowFittingCannotSeatSevenItems above) -- exactly the "row-shrinking
+// tier" this test used to warn a flip would require. Home sidesteps that
+// entirely by drawing via MenuLayout::homeTileRect instead of row-fitting.
+// BaseMetrics still keeps Continue Reading out of the menu, so the original
+// invariant still holds for it.
+TEST(HomeMenuLayout, BaseMetricsRowMenuCannotExceedSixRows) {
+  const auto& m = BaseMetrics::values;
+  EXPECT_FALSE(m.homeContinueReadingInMenu);
+  EXPECT_EQ(menuItemCount(m, true, true), 6);
 }
 
 TEST(HomeMenuLayout, FittedStepNeverExceedsNatural) {

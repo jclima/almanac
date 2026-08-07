@@ -4,6 +4,7 @@
 
 #include "./FileBrowserActivity.h"
 #include "activities/Activity.h"
+#include "components/themes/MenuLayout.h"
 #include "util/ButtonNavigator.h"
 
 struct RecentBook;
@@ -80,6 +81,9 @@ class HomeActivity final : public Activity {
   // hit-test see the same adjusted value, so a touch device simply gets a
   // taller menu and no bar to avoid.
   Rect menuRect() const;
+
+  // Shared by render() and loop() so drawn tiles and touch targets agree.
+  MenuLayout::HomeComposition menuComposition() const;
 
   int getMenuItemCount() const;
   bool storeCoverBuffer();    // Store frame buffer for cover image
