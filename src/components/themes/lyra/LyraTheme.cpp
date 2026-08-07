@@ -553,12 +553,13 @@ void LyraTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
   // a menu that already fits keeps its natural pitch. Via the virtual so this
   // and HomeActivity's hit-test resolve to the same arithmetic -- and so
   // Lyra 3 Covers, which subclasses this theme, picks up its own metrics.
-  const int rowStep = getMenuRowStep(rect.height, buttonCount);
+  // Inherits BaseTheme's implementation, which reads the active metrics.
+  const MenuRowLayout layout = getButtonMenuLayout(renderer, rect, buttonCount, selectedIndex);
 
-  for (int i = 0; i < buttonCount; ++i) {
+  for (int i = layout.firstIndex; i < layout.firstIndex + layout.visibleCount; ++i) {
     int tileWidth = rect.width - LyraMetrics::values.contentSidePadding * 2;
-    Rect tileRect = Rect{rect.x + LyraMetrics::values.contentSidePadding, rect.y + i * rowStep, tileWidth,
-                         LyraMetrics::values.menuRowHeight};
+    Rect tileRect = Rect{rect.x + LyraMetrics::values.contentSidePadding,
+                         layout.top + (i - layout.firstIndex) * layout.rowStep, tileWidth, layout.rowHeight};
 
     const bool selected = selectedIndex == i;
 
@@ -570,7 +571,7 @@ void LyraTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
     const char* label = labelStr.c_str();
     int textX = tileRect.x + 16;
     const int lineHeight = renderer.getLineHeight(UI_12_FONT_ID);
-    const int textY = tileRect.y + (LyraMetrics::values.menuRowHeight - lineHeight) / 2;
+    const int textY = tileRect.y + (layout.rowHeight - lineHeight) / 2;
 
     if (rowIcon != nullptr) {
       UIIcon icon = rowIcon(i);

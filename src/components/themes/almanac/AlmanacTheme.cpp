@@ -92,14 +92,20 @@ int AlmanacTheme::getListPageItems(const int contentHeight, const bool hasSubtit
   return std::max(1, contentHeight / rowStep);
 }
 
-int AlmanacTheme::getMenuRowStep(const int availableHeight, const int rowCount) const {
+MenuRowLayout AlmanacTheme::getButtonMenuLayout(const GfxRenderer& renderer, const Rect rect, const int buttonCount,
+                                                const int selectedIndex) const {
+  (void)renderer;  // This theme's rows are a fixed metric, not font-derived.
   // Reserve the selection stroke: it is drawn kSelectionStroke px outside the
   // selected tile's fill, so budgeting only the tiles leaves the bottom tile
   // fitting while its stroke still crosses into the button-hints bar. Without
   // this the 6-tile menu (OPDS configured) overshoots by exactly 1px.
-  return MenuLayout::fittedRowStep(std::max(0, availableHeight - kSelectionStroke),
-                                   AlmanacMetrics::values.menuRowHeight,
-                                   AlmanacMetrics::values.menuRowHeight + AlmanacMetrics::values.menuSpacing, rowCount);
+  const int rowStep =
+      MenuLayout::fittedRowStep(std::max(0, rect.height - kSelectionStroke), AlmanacMetrics::values.menuRowHeight,
+                                AlmanacMetrics::values.menuRowHeight + AlmanacMetrics::values.menuSpacing, buttonCount);
+  // paginate=false, as for Base and Lyra: the fit above is what clears the
+  // hints bar, so paging here would drop tiles rather than compress them.
+  return MenuLayout::menuRowLayout(rect.y, rect.height, AlmanacMetrics::values.menuRowHeight, rowStep, buttonCount,
+                                   selectedIndex, /*paginate=*/false);
 }
 
 void AlmanacTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle) const {
@@ -464,16 +470,16 @@ void AlmanacTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCo
   // HomeActivity derives it as `pageHeight - buttonHintsHeight - menuTop`, so
   // staying inside it is exactly "don't collide with the bar".
   //
-  // getMenuRowStep (overridden below to reserve kSelectionStroke) compresses
-  // the gaps; rows keep their full height so labels stay legible. Rows start
-  // at rect.y with no leading verticalSpacing -- homeMenuTopOffset already
-  // separates them from the cover tile, and the offset previously added here
-  // put the drawn rows 10px below the rows HomeActivity hit-tests.
-  const int rowStep = getMenuRowStep(rect.height, buttonCount);
-  const int rowHeight = AlmanacMetrics::values.menuRowHeight;
+  // getButtonMenuLayout (overridden below to reserve kSelectionStroke)
+  // compresses the gaps; rows keep their full height so labels stay legible.
+  // Rows start at rect.y with no leading verticalSpacing -- homeMenuTopOffset
+  // already separates them from the cover tile, and the offset previously
+  // added here put the drawn rows 10px below the rows HomeActivity hit-tests.
+  const MenuRowLayout layout = getButtonMenuLayout(renderer, rect, buttonCount, selectedIndex);
+  const int rowHeight = layout.rowHeight;
 
-  for (int i = 0; i < buttonCount; ++i) {
-    const int tileY = rect.y + i * rowStep;
+  for (int i = layout.firstIndex; i < layout.firstIndex + layout.visibleCount; ++i) {
+    const int tileY = layout.top + (i - layout.firstIndex) * layout.rowStep;
     const int tileX = rect.x + AlmanacMetrics::values.contentSidePadding;
     const int tileWidth = rect.width - AlmanacMetrics::values.contentSidePadding * 2;
     const int tileHeight = rowHeight;
@@ -492,7 +498,7 @@ void AlmanacTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCo
       // stroke's 3px reach, so no clamping against adjacent tiles is needed.
       // The *last* tile against the button-hints bar used to be the exception
       // -- the old fixed pitch pushed its bottom past the bar and this stroke
-      // added 3px on top of that -- but getMenuRowStep reserves that reach,
+      // added 3px on top of that -- but getButtonMenuLayout reserves that reach,
       // so every tile, stroke included, now stays inside the menu's rect.
       // width-1/height-1 below for the same reason as drawList's frame draw.
       renderer.fillRect(tileX, tileY, tileWidth, tileHeight, true);

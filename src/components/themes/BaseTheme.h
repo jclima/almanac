@@ -101,6 +101,21 @@ struct ThemeMetrics {
   int textFieldLineEndOffset;
 };
 
+// The row geometry a theme actually draws, as reported by
+// BaseTheme::getButtonMenuLayout. HomeActivity hit-tests against this rather
+// than re-deriving rows from ThemeMetrics, which is how taps stay on the rows
+// on screen even when a theme's row height follows its font (RoundedRaff) or
+// it paginates. Declared here rather than in MenuLayout.h because that header
+// needs ThemeMetrics from this one, and the reverse include would cycle.
+struct MenuRowLayout {
+  int top;           // y of the first drawn row
+  int rowHeight;     // drawn row height, i.e. the tappable band inside each step
+  int rowStep;       // pitch: rowHeight plus the gap below it
+  int firstIndex;    // index of the first drawn row
+  int visibleCount;  // rows actually drawn; below pageItems on a short last page
+  int pageItems;     // rows a full page holds
+};
+
 enum UIIcon { None = 0, Folder, Text, Image, Book, File, Recent, Settings, Transfer, Library, Wifi, Hotspot, Bookmark };
 
 // Default theme implementation (Classic Theme)
@@ -189,18 +204,15 @@ class BaseTheme {
   virtual void drawSideButtonHints(const GfxRenderer& renderer, const char* topBtn, const char* bottomBtn) const;
   virtual int getListRowStep(bool hasSubtitle) const;
   virtual int getListPageItems(int contentHeight, bool hasSubtitle) const;
-  // Vertical pitch between home-menu rows. The menu is drawn here but
-  // hit-tested by HomeActivity, so both sides must derive rows identically --
-  // same reason getListRowStep exists. A theme that reserves extra space
-  // below the last row (Almanac's selection stroke) overrides this rather
-  // than adjusting only its own draw, which would desync the hit-test.
+  // Reports the row geometry drawButtonMenu will actually draw, so callers can
+  // hit-test taps against it instead of re-deriving it from ThemeMetrics --
+  // same reason getListRowStep exists, but this one has to carry row height,
+  // pitch and paging because themes differ in all three. Takes the renderer
+  // because a theme's row height may follow its font (RoundedRaff).
   //
-  // Contract: availableHeight MUST be the same value passed as the menu
-  // rect's height. Draw sites pass rect.height and HomeActivity's hit-test
-  // passes MenuLayout::availableHeight(...); those agree only because
-  // HomeActivity builds the rect from exactly that expression. Pass anything
-  // else and the two silently diverge again.
-  virtual int getMenuRowStep(int availableHeight, int rowCount) const;
+  // Both sides pass HomeActivity::menuRect(), which is why they agree.
+  virtual MenuRowLayout getButtonMenuLayout(const GfxRenderer& renderer, Rect rect, int buttonCount,
+                                            int selectedIndex) const;
   virtual void drawList(const GfxRenderer& renderer, Rect rect, int itemCount, int selectedIndex,
                         const std::function<std::string(int index)>& rowTitle,
                         const std::function<std::string(int index)>& rowSubtitle = nullptr,
