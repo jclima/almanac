@@ -9,6 +9,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <new>
 
 #include "BitmapHelpers.h"
 
@@ -628,13 +629,30 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
   FloydSteinbergDitherer* fsDitherer = nullptr;
   Atkinson1BitDitherer* atkinson1BitDitherer = nullptr;
 
+  // new (std::nothrow) throughout: under -fno-exceptions a failed bare new
+  // calls abort(), so a large PNG on a low-heap device would panic mid-decode.
+  // Every use below is already guarded (`ditherer ? ... : quantize...`), so a
+  // null ditherer degrades to plain quantization rather than failing -- hence
+  // the invalid case deletes and nulls instead of bailing out.
+  auto dropIfInvalid = [](auto*& d) {
+    if (d && !d->valid()) {
+      delete d;
+      d = nullptr;
+    }
+  };
   if (oneBit) {
-    atkinson1BitDitherer = new Atkinson1BitDitherer(outWidth);
+    atkinson1BitDitherer = new (std::nothrow) Atkinson1BitDitherer(outWidth);
+    dropIfInvalid(atkinson1BitDitherer);
+    if (!atkinson1BitDitherer) LOG_ERR("PNG", "OOM: 1-bit ditherer (w=%d); using plain quantization", outWidth);
   } else if (!USE_8BIT_OUTPUT) {
     if (USE_ATKINSON) {
-      atkinsonDitherer = new AtkinsonDitherer(outWidth);
+      atkinsonDitherer = new (std::nothrow) AtkinsonDitherer(outWidth);
+      dropIfInvalid(atkinsonDitherer);
+      if (!atkinsonDitherer) LOG_ERR("PNG", "OOM: Atkinson ditherer (w=%d); using plain quantization", outWidth);
     } else if (USE_FLOYD_STEINBERG) {
-      fsDitherer = new FloydSteinbergDitherer(outWidth);
+      fsDitherer = new (std::nothrow) FloydSteinbergDitherer(outWidth);
+      dropIfInvalid(fsDitherer);
+      if (!fsDitherer) LOG_ERR("PNG", "OOM: Floyd-Steinberg ditherer (w=%d); using plain quantization", outWidth);
     }
   }
 
@@ -645,8 +663,23 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
   uint32_t nextOutY_srcStart = 0;
 
   if (needsScaling) {
-    rowAccum = new uint32_t[outWidth]();
-    rowCount = new uint16_t[outWidth]();
+    // Unlike the ditherers these are load-bearing -- the scaling loops index
+    // them unguarded -- so a failed allocation has to fail the decode rather
+    // than degrade. Still nothrow: a clean `false` beats an abort().
+    rowAccum = new (std::nothrow) uint32_t[outWidth]();
+    rowCount = new (std::nothrow) uint16_t[outWidth]();
+    if (!rowAccum || !rowCount) {
+      LOG_ERR("PNG", "OOM: scaling accumulators (w=%d)", outWidth);
+      delete[] rowAccum;
+      delete[] rowCount;
+      delete atkinsonDitherer;
+      delete fsDitherer;
+      delete atkinson1BitDitherer;
+      free(rowBuffer);
+      free(ctx.currentRow);
+      free(ctx.previousRow);
+      return false;
+    }
     nextOutY_srcStart = scaleY_fp;
   }
 

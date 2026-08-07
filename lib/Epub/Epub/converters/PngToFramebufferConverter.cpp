@@ -43,7 +43,15 @@ struct PngContext {
 // File I/O callbacks use pFile->fHandle to access the HalFile*,
 // avoiding the need for global file state.
 void* pngOpenWithHandle(const char* filename, int32_t* size) {
-  HalFile* f = new HalFile();
+  // new (std::nothrow): with -fno-exceptions a failed bare new calls abort(),
+  // which would panic mid-decode. This decoder callback already treats a null
+  // return as "open failed" (see the branch below), so OOM degrades to a
+  // skipped image instead.
+  HalFile* f = new (std::nothrow) HalFile();
+  if (!f) {
+    LOG_ERR("PNG", "OOM: HalFile for %s", filename);
+    return nullptr;
+  }
   if (!Storage.openFileForRead("PNG", std::string(filename), *f)) {
     delete f;
     return nullptr;
