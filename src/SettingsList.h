@@ -2,6 +2,7 @@
 
 #include <BoardConfig.h>
 #include <HalClock.h>
+#include <HalGPIO.h>
 #include <HalTiltSensor.h>
 #include <I18n.h>
 #include <SdCardFontRegistry.h>
@@ -193,7 +194,9 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
   static const std::vector<SettingInfo> baseList = [] {
     // Enum settings are persisted as numeric values. Assign these labels by enum
     // value so a reordered menu or enum cannot silently swap their behavior.
-    std::vector<StrId> sleepScreenValues(AlmanacSettings::SLEEP_SCREEN_MODE_COUNT);
+    const size_t sleepModeCount =
+        gpio.isXteinkDevice() ? AlmanacSettings::SLEEP_SCREEN_MODE_COUNT : AlmanacSettings::SLEEP_SCREEN_MODE_COUNT - 1;
+    std::vector<StrId> sleepScreenValues(sleepModeCount);
     sleepScreenValues[AlmanacSettings::DARK] = StrId::STR_DARK;
     sleepScreenValues[AlmanacSettings::LIGHT] = StrId::STR_LIGHT;
     sleepScreenValues[AlmanacSettings::CUSTOM] = StrId::STR_CUSTOM;
@@ -201,6 +204,7 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
     sleepScreenValues[AlmanacSettings::COVER_CUSTOM] = StrId::STR_COVER_CUSTOM;
     sleepScreenValues[AlmanacSettings::BLANK] = StrId::STR_NONE_OPT;
     sleepScreenValues[AlmanacSettings::QUICK_RESUME] = StrId::STR_QUICK_RESUME;
+    if (gpio.isXteinkDevice()) sleepScreenValues[AlmanacSettings::TESSERAE] = StrId::STR_TESSERAE;
 
     std::vector<StrId> statusBarClockValues(AlmanacSettings::STATUS_BAR_CLOCK_MODE_COUNT);
     statusBarClockValues[AlmanacSettings::STATUS_BAR_CLOCK_HIDE] = StrId::STR_HIDE;
@@ -324,6 +328,17 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
                            {AlmanacSettings::FLIGHT_TRACKER_RADIUS_MIN, AlmanacSettings::FLIGHT_TRACKER_RADIUS_MAX,
                             AlmanacSettings::FLIGHT_TRACKER_RADIUS_STEP},
                            "flightTrackerRadiusMiles"),
+        // Tesserae connection details: persisted and web-exposed, but edited
+        // by TesseraeSettingsActivity on-device. Keep the bearer token
+        // obfuscated on disk and out of all rendered settings values.
+        SettingInfo::String(StrId::STR_TESSERAE_SERVER_URL, &SETTINGS.tesseraeServerUrl[0],
+                            sizeof(SETTINGS.tesseraeServerUrl), "tesseraeServerUrl"),
+        SettingInfo::String(StrId::STR_TESSERAE_DEVICE_ID, &SETTINGS.tesseraeDeviceId[0],
+                            sizeof(SETTINGS.tesseraeDeviceId), "tesseraeDeviceId"),
+        SettingInfo::String(StrId::STR_TESSERAE_DEVICE_TOKEN, &SETTINGS.tesseraeDeviceToken[0],
+                            sizeof(SETTINGS.tesseraeDeviceToken), "tesseraeDeviceToken")
+            .withObfuscated(),
+        SettingInfo::Toggle(StrId::STR_TESSERAE_GRAYSCALE, &AlmanacSettings::tesseraeGrayscale, "tesseraeGrayscale"),
         // OPDS download filename format: persisted + web-exposed, category-less so it
         // is hidden from the on-device Settings screen (cycled from the OPDS UI).
         SettingInfo::Enum(StrId::STR_OPDS_FILENAME_FORMAT, &AlmanacSettings::opdsFilenameFormat,

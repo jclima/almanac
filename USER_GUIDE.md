@@ -32,6 +32,7 @@ Welcome to the **Almanac** firmware. This guide outlines the hardware controls, 
         - [Option B: Legacy Public KOReader Server (`sync.koreader.rocks`)](#option-b-legacy-public-koreader-server-synckoreaderrocks)
         - [Option C: Self-Hosted Server (Docker Compose)](#option-c-self-hosted-server-docker-compose)
         - [Syncing While Reading](#syncing-while-reading)
+      - [3.6.8 Tesserae Sleep Screen](#368-tesserae-sleep-screen)
     - [3.7 Sleep Screen](#37-sleep-screen)
       - [Cover settings](#cover-settings)
       - [Custom images](#custom-images)
@@ -186,6 +187,7 @@ The Settings screen allows you to configure the device's behavior. There are a f
   - "None" - A blank screen
   - "Cover + Custom" - The book cover image while actively reading, falls back to "Custom" behavior otherwise
   - "Quick resume" - The text of the last page read will be displayed on the sleep screen and a moon icon is shown on the edge of the screen. Waking up the device will return to the same page of the opened book. This is useful for quickly resuming reading without waiting for the device to fully wake up and load the book.
+  - "Tesserae" - A dashboard rendered by your self-hosted Tesserae server. See [Tesserae Sleep Screen](#368-tesserae-sleep-screen) below.
 
 - **Sleep Screen Cover Mode**: How to display the book cover when "Cover" sleep screen is selected:
   
@@ -294,6 +296,8 @@ The Settings screen allows you to configure the device's behavior. There are a f
 - **Time to Sleep**: Set the duration of inactivity before the device automatically goes to sleep; options are 1, 3, 5, 10 (default), 15 or 30 minutes.
 
 - **Wi-Fi Networks**: Connect to Wi-Fi networks for file transfers and firmware updates.
+
+- **Tesserae**: Configure the self-hosted dashboard server used by the Tesserae sleep screen.
 
 - **KOReader Sync**: Options for setting up KOReader for syncing book progress. **Smart sync** is the default for new configurations and auto-resolves simple push/pull decisions. Existing credential files retain **Ask every time** when migrated; you can switch Sync Behavior at any time if you prefer manual confirmation.
 
@@ -483,6 +487,22 @@ Once any of the options above is set up, press **Confirm** while reading to open
 - With **Sync Behavior** set to **Ask every time**, choose **Apply Remote** to jump to remote progress or **Upload Local** to push current progress.
 - With **Sync Behavior** set to **Smart sync**, Almanac auto-resolves simple cases: upload when no remote progress exists, confirm and leave both unchanged when local and remote progress are already synchronized, upload when local progress is further ahead, or apply remote when remote progress is further ahead.
 
+#### 3.6.8 Tesserae Sleep Screen
+
+[Tesserae](https://github.com/dmellok/tesserae) renders Home Assistant and other dashboard data into panel-ready e-ink frames on a self-hosted server. Almanac supports its Xteink X3 and X4 monochrome and four-level grayscale frame formats.
+
+1. Install Tesserae and make its HTTP endpoint reachable from the same trusted network as the reader.
+2. On the reader, save the network under **Settings -> System -> Wi-Fi Networks**.
+3. Open **Settings -> System -> Tesserae** and enter the base server URL, such as `http://192.168.1.50` (include your configured port when it is not the default).
+4. Leave **Device ID** on **Automatic** unless you need a specific ID.
+5. Choose a **Frame mode**. **Monochrome** is faster and best for text and line art; **Four-level grayscale** doubles the download and uses a longer three-pass paint, but preserves photos and shading.
+6. Choose **Connect**. For zero-touch onboarding, approve the pending Xteink device in Tesserae and choose **Connect** again. Alternatively, choose **Pair with code** and enter Tesserae's six-digit pairing code.
+7. Set **Settings -> Display -> Sleep Screen** to **Tesserae**.
+
+Almanac contacts Tesserae only while entering sleep; it never wakes itself on a polling timer. Each sleep transition asks for a fresh frame and posts battery, Wi-Fi signal, IP address, firmware version, and panel dimensions. If Wi-Fi, Tesserae, registration, or the frame is unavailable, the firmware shows the normal Almanac sleep screen instead.
+
+Changing the server URL, device ID, or frame mode clears the saved registration token because Tesserae registers monochrome and grayscale panels as separate hardware kinds. The token is obfuscated in the settings file and is never displayed in the device UI.
+
 ### 3.7 Sleep Screen
 
 The **Sleep Screen** setting controls what is displayed when the device goes to sleep:
@@ -495,6 +515,8 @@ The **Sleep Screen** setting controls what is displayed when the device goes to 
 | **Cover**          | The cover of the currently open book. Falls back to **Dark** if no book is open.                                             |
 | **Cover + Custom** | The cover of the currently open book, shown only while actively reading. Falls back to **Custom** behavior when not reading. |
 | **None**           | A blank screen.                                                                                                              |
+| **Quick resume**   | The last reader page with a moon icon; wake returns directly to the open book.                                               |
+| **Tesserae**       | A fresh server-rendered Tesserae dashboard; falls back to **Dark** when it cannot be fetched.                                |
 
 #### Cover settings
 

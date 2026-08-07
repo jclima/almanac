@@ -59,6 +59,12 @@ Inherited from CrossPoint and unchanged:
   AP and STA modes with QR helpers, Calibre wireless, OPDS browser, OTA updates.
 - **Localisation**: 31 UI languages, with RTL support.
 
+### Tesserae sleep screens
+
+Almanac can use [Tesserae](https://github.com/dmellok/tesserae) to show a
+self-hosted, server-rendered dashboard whenever the reader enters sleep. Xteink
+X3 and X4 panels support monochrome and four-level grayscale frames.
+
 ### Looking like itself
 
 - **Almanac** — the theme, an instrument panel. Solid black header and
