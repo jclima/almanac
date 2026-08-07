@@ -433,9 +433,26 @@ void AlmanacTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCo
   // BaseTheme and RoundedRaffTheme, both of which also ignore this callback.
   (void)rowIcon;
 
-  for (int i = 0; i < buttonCount; ++i) {
-    const int tileY = AlmanacMetrics::values.verticalSpacing + rect.y +
-                      i * (AlmanacMetrics::values.menuRowHeight + AlmanacMetrics::values.menuSpacing);
+  // Page on rect.height, which the fixed-pitch layout previously ignored:
+  // with 6 menu items (OPDS configured) the 6th tile's position overlapped
+  // the button-hints bar by 18px, clipping its label against the bar's
+  // solid fill (see 938678e6 / 962091a2). Same selection-derived windowing
+  // as drawList, so HomeActivity's plain next/previous navigation pages for
+  // free. usableHeight also reserves kSelectionStroke so a selected last
+  // tile's outer stroke -- which reaches that far past the fill -- stays
+  // inside the rect too. On touch devices getMetrics() zeroes
+  // buttonHintsHeight, growing this rect enough that all six tiles fit one
+  // page, so paging never activates where HomeActivity's unpaged rowTouch
+  // mapping is in play.
+  const int rowStep = AlmanacMetrics::values.menuRowHeight + AlmanacMetrics::values.menuSpacing;
+  const int usableHeight = rect.height - AlmanacMetrics::values.verticalSpacing - kSelectionStroke;
+  // + menuSpacing: the last tile on a page needs no trailing gap.
+  const int pageItems = std::max(1, (usableHeight + AlmanacMetrics::values.menuSpacing) / rowStep);
+  const int pageStart = std::max(0, selectedIndex) / pageItems * pageItems;
+  const int pageEnd = std::min(buttonCount, pageStart + pageItems);
+
+  for (int i = pageStart; i < pageEnd; ++i) {
+    const int tileY = rect.y + AlmanacMetrics::values.verticalSpacing + (i - pageStart) * rowStep;
     const int tileX = rect.x + AlmanacMetrics::values.contentSidePadding;
     const int tileWidth = rect.width - AlmanacMetrics::values.contentSidePadding * 2;
     const int tileHeight = AlmanacMetrics::values.menuRowHeight;
@@ -450,13 +467,11 @@ void AlmanacTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCo
       // tiles aren't packed edge-to-edge inside a shared frame -- each tile
       // has menuSpacing (8px) between it and its neighbours, comfortably
       // more than the stroke's reach (3px), so no clamping against adjacent
-      // tiles is needed here. (This does NOT cover the *last* tile against
-      // the button-hints bar below the menu -- see the report: with 6 menu
-      // items (OPDS enabled) HomeActivity's own tile-position formula
-      // already lands the last tile's unstroked bottom past the
-      // button-hints bar in every theme, pre-existing and out of this
-      // file's scope; the stroke here adds 3px on top of that.) width-1/
-      // height-1 below for the same reason as drawList's frame draw.
+      // tiles is needed here. Against the rect's own bottom edge, the
+      // paging math above already reserved kSelectionStroke, so a selected
+      // last tile's stroke stays inside the rect rather than reaching into
+      // the button-hints bar. width-1/height-1 below for the same reason as
+      // drawList's frame draw.
       renderer.fillRect(tileX, tileY, tileWidth, tileHeight, true);
       renderer.drawRect(tileX - kSelectionStroke, tileY - kSelectionStroke, tileWidth + kSelectionStroke * 2 - 1,
                         tileHeight + kSelectionStroke * 2 - 1, kSelectionStrokeWidth, true);
@@ -471,5 +486,25 @@ void AlmanacTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCo
     const int lineHeight = renderer.getLineHeight(UI_10_FONT_ID);
     const int textY = tileY + (tileHeight - lineHeight) / 2;
     renderer.drawText(UI_10_FONT_ID, textX, textY, label, !selected);
+  }
+
+  // Same gauge-strip paging indicator as drawList's step 4, for the same
+  // reason: without one, page 1 gives no cue that another item exists below
+  // the fold. The track spans the tile column (no kFrameStroke inset --
+  // unlike the list, the menu has no enclosing frame), and its x lane
+  // (scrollBarWidth + scrollBarRightOffset in from the right edge) sits
+  // clear of the tiles, whose own right edge is contentSidePadding (16) in;
+  // even a selected tile's stroke reaches only 2px past that.
+  if (buttonCount > pageItems) {
+    const int barX =
+        rect.x + rect.width - AlmanacMetrics::values.scrollBarWidth - AlmanacMetrics::values.scrollBarRightOffset;
+    const int trackY = rect.y + AlmanacMetrics::values.verticalSpacing;
+    const int trackHeight = pageItems * rowStep - AlmanacMetrics::values.menuSpacing;
+    const int thumbHeight = std::max(10, (trackHeight * pageItems) / buttonCount);
+    const int maxStart = std::max(1, buttonCount - pageItems);
+    const int maxTravel = std::max(1, trackHeight - thumbHeight);
+    const int clampedStart = std::clamp(pageStart, 0, maxStart);
+    const int thumbY = trackY + (clampedStart * maxTravel) / maxStart;
+    renderer.fillRect(barX, thumbY, AlmanacMetrics::values.scrollBarWidth, thumbHeight, true);
   }
 }
