@@ -80,11 +80,24 @@ constexpr ThemeMetrics values = {.batteryWidth = 15,
 // row plus a heavier stroke outside it).
 class AlmanacTheme final : public BaseTheme {
  public:
+  // Reach of a selected tile's stroke beyond its fill, which getButtonMenuLayout
+  // reserves below the last home-menu row. Declared here rather than only in
+  // the .cpp's anonymous namespace so test/home_menu_layout/ pins the same
+  // value the layout actually applies instead of a copy of it.
+  static constexpr int kMenuSelectionReserve = 3;
+
   // BaseTheme::getListRowStep reads BaseMetrics directly rather than the
   // active theme's metrics, so a theme with different row heights MUST
   // override both of these or lists draw and step at different pitches.
   int getListRowStep(bool hasSubtitle) const override;
   int getListPageItems(int contentHeight, bool hasSubtitle) const override;
+
+  // This theme's selected tile draws a stroke OUTSIDE its fill, so the last
+  // row needs that much clearance beyond itself. Reserved here rather than in
+  // drawButtonMenu alone so HomeActivity's hit-test, which calls this same
+  // virtual, derives the identical geometry.
+  MenuRowLayout getButtonMenuLayout(const GfxRenderer& renderer, Rect rect, int buttonCount,
+                                    int selectedIndex) const override;
 
   // Signatures copied verbatim from BaseTheme.h (see that file for the
   // authoritative declarations) so a drift is a compiler error, not a

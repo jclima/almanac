@@ -1,4 +1,4 @@
-#include "CrossPointWebServerActivity.h"
+#include "AlmanacWebServerActivity.h"
 
 #include <DNSServer.h>
 #include <ESPmDNS.h>
@@ -7,6 +7,7 @@
 #include <WiFi.h>
 
 #include <cstddef>
+#include <new>
 
 #include "MappedInputManager.h"
 #include "NetworkModeSelectionActivity.h"
@@ -20,9 +21,9 @@
 
 namespace {
 // AP Mode configuration
-constexpr const char* AP_SSID = "CrossPoint-Reader";
+constexpr const char* AP_SSID = "Almanac";
 constexpr const char* AP_PASSWORD = nullptr;  // Open network for ease of use
-constexpr const char* AP_HOSTNAME = "crosspoint";
+constexpr const char* AP_HOSTNAME = "almanac";
 constexpr uint8_t AP_CHANNEL = 1;
 constexpr uint8_t AP_MAX_CONNECTIONS = 4;
 constexpr int QR_CODE_WIDTH = 198;
@@ -60,7 +61,7 @@ int barsForRssi(int rssi, int currentBars) {
 }
 }  // namespace
 
-void CrossPointWebServerActivity::onEnter() {
+void AlmanacWebServerActivity::onEnter() {
   Activity::onEnter();
 
   LOG_DBG("WEBACT", "Free heap at onEnter: %d bytes", ESP.getFreeHeap());
@@ -86,7 +87,7 @@ void CrossPointWebServerActivity::onEnter() {
                          });
 }
 
-void CrossPointWebServerActivity::onExit() {
+void AlmanacWebServerActivity::onExit() {
   Activity::onExit();
 
   LOG_DBG("WEBACT", "Free heap at onExit start: %d bytes", ESP.getFreeHeap());
@@ -109,7 +110,7 @@ void CrossPointWebServerActivity::onExit() {
   LOG_DBG("WEBACT", "Free heap at onExit end: %d bytes", ESP.getFreeHeap());
 }
 
-void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) {
+void AlmanacWebServerActivity::onNetworkModeSelected(const NetworkMode mode) {
   const char* modeName = "Join Network";
   if (mode == NetworkMode::CONNECT_CALIBRE) {
     modeName = "Connect to Calibre";
@@ -162,7 +163,7 @@ void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) 
   }
 }
 
-void CrossPointWebServerActivity::onWifiSelectionComplete(const bool connected) {
+void AlmanacWebServerActivity::onWifiSelectionComplete(const bool connected) {
   LOG_DBG("WEBACT", "WifiSelectionActivity completed, connected=%d", connected);
 
   if (connected) {
@@ -189,7 +190,7 @@ void CrossPointWebServerActivity::onWifiSelectionComplete(const bool connected) 
   }
 }
 
-void CrossPointWebServerActivity::startAccessPoint() {
+void AlmanacWebServerActivity::startAccessPoint() {
   LOG_DBG("WEBACT", "Starting Access Point mode...");
   LOG_DBG("WEBACT", "Free heap before AP start: %d bytes", ESP.getFreeHeap());
 
@@ -231,10 +232,19 @@ void CrossPointWebServerActivity::startAccessPoint() {
   // Start DNS server for captive portal behavior
   // This redirects all DNS queries to our IP, making any domain typed resolve to us
   stopDnsServer();
-  dnsServer = new DNSServer();
-  dnsServer->setErrorReplyCode(DNSReplyCode::NoError);
-  dnsServer->start(DNS_PORT, "*", apIP);
-  LOG_DBG("WEBACT", "DNS server started for captive portal");
+  // new (std::nothrow), not bare new: with -fno-exceptions a failed bare new
+  // calls abort() rather than returning nullptr, so an OOM here would panic
+  // the device instead of degrading. The captive portal is a convenience --
+  // the web UI is still reachable by IP without it -- so a null DNS server is
+  // recoverable and worth continuing on.
+  dnsServer = new (std::nothrow) DNSServer();
+  if (dnsServer) {
+    dnsServer->setErrorReplyCode(DNSReplyCode::NoError);
+    dnsServer->start(DNS_PORT, "*", apIP);
+    LOG_DBG("WEBACT", "DNS server started for captive portal");
+  } else {
+    LOG_ERR("WEBACT", "OOM: DNSServer; captive portal disabled, web UI still reachable by IP");
+  }
 
   LOG_DBG("WEBACT", "Free heap after AP start: %d bytes", ESP.getFreeHeap());
 
@@ -242,11 +252,11 @@ void CrossPointWebServerActivity::startAccessPoint() {
   startWebServer();
 }
 
-void CrossPointWebServerActivity::startWebServer() {
+void AlmanacWebServerActivity::startWebServer() {
   LOG_DBG("WEBACT", "Starting web server...");
 
   // Create the web server instance
-  webServer.reset(new CrossPointWebServer());
+  webServer.reset(new AlmanacWebServer());
   webServer->begin();
 
   if (webServer->isRunning()) {
@@ -265,7 +275,7 @@ void CrossPointWebServerActivity::startWebServer() {
   }
 }
 
-void CrossPointWebServerActivity::loop() {
+void AlmanacWebServerActivity::loop() {
   // Handle different states
   if (state == WebServerActivityState::SERVER_RUNNING) {
     // Handle DNS requests for captive portal (AP mode only)
@@ -363,7 +373,7 @@ void CrossPointWebServerActivity::loop() {
   }
 }
 
-void CrossPointWebServerActivity::render(RenderLock&&) {
+void AlmanacWebServerActivity::render(RenderLock&&) {
   // Only render our own UI when server is running
   // Subactivities handle their own rendering
   if (state == WebServerActivityState::SERVER_RUNNING || state == WebServerActivityState::AP_STARTING) {
@@ -388,7 +398,7 @@ void CrossPointWebServerActivity::render(RenderLock&&) {
   }
 }
 
-void CrossPointWebServerActivity::renderServerRunning() const {
+void AlmanacWebServerActivity::renderServerRunning() const {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
 
@@ -467,7 +477,7 @@ void CrossPointWebServerActivity::renderServerRunning() const {
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 }
 
-void CrossPointWebServerActivity::renderWifiIndicator(int subHeaderTop) const {
+void AlmanacWebServerActivity::renderWifiIndicator(int subHeaderTop) const {
   constexpr int BAR_COUNT = 4;
   constexpr int BAR_WIDTH = 4;
   constexpr int BAR_GAP = 2;

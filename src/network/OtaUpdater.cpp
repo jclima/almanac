@@ -14,11 +14,16 @@
 #include <string>
 
 namespace {
-constexpr char latestReleaseUrl[] = "https://api.github.com/repos/crosspoint-reader/crosspoint-reader/releases/latest";
+// Almanac's own releases. This MUST NOT point at upstream crosspoint-reader:
+// the version comparison below is a plain string inequality against
+// ALMANAC_VERSION, so an upstream release would always read as "an update is
+// available" and installing it would flash CrossPoint over Almanac.
+// Keep in step with the repository name if it is ever renamed.
+constexpr char latestReleaseUrl[] = "https://api.github.com/repos/jclima/almanac/releases/latest";
 }  // namespace
 
 OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
-  LOG_DBG("OTA", "Checking for update (current: %s)", CROSSPOINT_VERSION);
+  LOG_DBG("OTA", "Checking for update (current: %s)", ALMANAC_VERSION);
 
   // Stream the ~32KB release JSON straight into the parser as it arrives.
   // Buffering the whole body in a std::string would add a growing allocation
@@ -60,14 +65,14 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
 }
 
 bool OtaUpdater::isUpdateNewer() const {
-  if (!updateAvailable || latestVersion.empty() || latestVersion == CROSSPOINT_VERSION) {
+  if (!updateAvailable || latestVersion.empty() || latestVersion == ALMANAC_VERSION) {
     return false;
   }
 
   int currentMajor, currentMinor, currentPatch;
   int latestMajor, latestMinor, latestPatch;
 
-  const auto currentVersion = CROSSPOINT_VERSION;
+  const auto currentVersion = ALMANAC_VERSION;
 
   // semantic version check (only match on 3 segments)
   sscanf(latestVersion.c_str(), "%d.%d.%d", &latestMajor, &latestMinor, &latestPatch);

@@ -11,11 +11,12 @@
 #include <cstdint>
 #include <string>
 
-#include "CrossPointSettings.h"
+#include "AlmanacSettings.h"
 #include "I18n.h"
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
 #include "components/icons/bookmark.h"
+#include "components/themes/MenuLayout.h"
 #include "fontIds.h"
 
 // Internal constants
@@ -265,6 +266,21 @@ int BaseTheme::getListPageItems(int contentHeight, bool hasSubtitle) const {
   return std::max(1, contentHeight / rowStep);
 }
 
+MenuRowLayout BaseTheme::getButtonMenuLayout(const GfxRenderer& renderer, const Rect rect, const int buttonCount,
+                                             const int selectedIndex) const {
+  (void)renderer;  // Rows here are a fixed metric, not font-derived.
+  // Reads the *active* metrics rather than BaseMetrics so a theme inheriting
+  // this implementation gets its own row height and pitch without needing an
+  // override of its own.
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int rowStep = MenuLayout::fittedRowStep(rect.height, metrics.menuRowHeight,
+                                                metrics.menuRowHeight + metrics.menuSpacing, buttonCount);
+  // paginate=false: this layout clears the button-hints bar by compressing
+  // gaps, so every row is drawn. Paging here would hide entries instead.
+  return MenuLayout::menuRowLayout(rect.y, rect.height, metrics.menuRowHeight, rowStep, buttonCount, selectedIndex,
+                                   /*paginate=*/false);
+}
+
 void BaseTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, int selectedIndex,
                          const std::function<std::string(int index)>& rowTitle,
                          const std::function<std::string(int index)>& rowSubtitle,
@@ -368,7 +384,7 @@ void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
                     BaseMetrics::values.batteryHeight + 10, false);
 
   const bool showBatteryPercentage =
-      SETTINGS.hideBatteryPercentage != CrossPointSettings::HIDE_BATTERY_PERCENTAGE::HIDE_ALWAYS;
+      SETTINGS.hideBatteryPercentage != AlmanacSettings::HIDE_BATTERY_PERCENTAGE::HIDE_ALWAYS;
   // Position icon at right edge, drawBatteryRight will place text to the left
   const int batteryX = rect.x + rect.width - 12 - BaseMetrics::values.batteryWidth;
   drawBatteryRight(renderer,
@@ -698,18 +714,24 @@ void BaseTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
 void BaseTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                                const std::function<std::string(int index)>& buttonLabel,
                                const std::function<UIIcon(int index)>& rowIcon) const {
-  for (int i = 0; i < buttonCount; ++i) {
-    const int tileY = BaseMetrics::values.verticalSpacing + rect.y +
-                      static_cast<int>(i) * (BaseMetrics::values.menuRowHeight + BaseMetrics::values.menuSpacing);
+  // Rows start at rect.y -- homeMenuTopOffset already separates them from the
+  // cover tile -- and their gaps compress if the menu would otherwise run into
+  // the button-hints bar. Menus that already fit keep their natural pitch.
+  // Via the virtual, not MenuLayout directly, so HomeActivity's hit-test and
+  // this draw always resolve to the same theme's arithmetic.
+  const MenuRowLayout layout = getButtonMenuLayout(renderer, rect, buttonCount, selectedIndex);
+
+  for (int i = layout.firstIndex; i < layout.firstIndex + layout.visibleCount; ++i) {
+    const int tileY = layout.top + (i - layout.firstIndex) * layout.rowStep;
 
     const bool selected = selectedIndex == i;
 
     if (selected) {
       renderer.fillRect(rect.x + BaseMetrics::values.contentSidePadding, tileY,
-                        rect.width - BaseMetrics::values.contentSidePadding * 2, BaseMetrics::values.menuRowHeight);
+                        rect.width - BaseMetrics::values.contentSidePadding * 2, layout.rowHeight);
     } else {
       renderer.drawRect(rect.x + BaseMetrics::values.contentSidePadding, tileY,
-                        rect.width - BaseMetrics::values.contentSidePadding * 2, BaseMetrics::values.menuRowHeight);
+                        rect.width - BaseMetrics::values.contentSidePadding * 2, layout.rowHeight);
     }
 
     std::string labelStr = buttonLabel(i);
@@ -717,8 +739,7 @@ void BaseTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
     const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, label);
     const int textX = rect.x + (rect.width - textWidth) / 2;
     const int lineHeight = renderer.getLineHeight(UI_10_FONT_ID);
-    const int textY =
-        tileY + (BaseMetrics::values.menuRowHeight - lineHeight) / 2;  // vertically centered assuming y is top of text
+    const int textY = tileY + (layout.rowHeight - lineHeight) / 2;  // vertically centered assuming y is top of text
     // Invert text when the tile is selected, to contrast with the filled background
     renderer.drawText(UI_10_FONT_ID, textX, textY, label, selectedIndex != i);
   }
@@ -829,7 +850,7 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
     const int progressBarY = renderer.getScreenHeight() - orientedMarginBottom - sb.progressBarHeightPx -
                              paddingBottom + (fillMargin ? 1 : 0);
     size_t progress;
-    if (sb.progressBarMode == CrossPointSettings::STATUS_BAR_PROGRESS_BAR::BOOK_PROGRESS) {
+    if (sb.progressBarMode == AlmanacSettings::STATUS_BAR_PROGRESS_BAR::BOOK_PROGRESS) {
       progress = static_cast<size_t>(bookProgress);
     } else {
       // Chapter progress
@@ -866,10 +887,10 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
       int clockTextWidth = renderer.getTextWidth(SMALL_FONT_ID, timeBuf);
       int clockX = 0;
       // Position to the left or right of the progress text (with a small gap)
-      if (sb.clockMode == CrossPointSettings::STATUS_BAR_CLOCK_LEFT) {
+      if (sb.clockMode == AlmanacSettings::STATUS_BAR_CLOCK_LEFT) {
         clockX = leftClusterX + leftClusterWidth + (leftClusterWidth > 0 ? 10 : 0);
         leftClusterWidth += clockTextWidth + 10;
-      } else if (sb.clockMode == CrossPointSettings::STATUS_BAR_CLOCK_RIGHT) {
+      } else if (sb.clockMode == AlmanacSettings::STATUS_BAR_CLOCK_RIGHT) {
         clockX = rightClusterX - rightClusterWidth - (rightClusterWidth > 0 ? 10 : 0) - clockTextWidth;
         rightClusterWidth += clockTextWidth + 10;
       }

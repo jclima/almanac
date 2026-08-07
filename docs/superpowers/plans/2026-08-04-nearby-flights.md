@@ -4,7 +4,7 @@
 
 **Goal:** Add a "Nearby Flights" screen to this personal X4 fork that fetches aircraft near a configured home location from OpenSky Network's free, anonymous API and displays them, with a per-flight detail view.
 
-**Architecture:** A pure-math `GeoMath` lib (distance/bearing/bounding-box), a `StreamingJsonParser`-based `OpenSkyStatesParser` that keeps a fixed 20-entry sorted match list in O(1) memory, a thin `OpenSkyClient` network wrapper, three new `CrossPointSettings` fields (home lat/lon as text, radius as uint8_t) persisted through the existing generic settings loop, a `FlightTrackerSettingsActivity` for editing them, a `NearbyFlightsActivity` state machine modeled directly on `OpdsBookBrowserActivity`, and a Home menu entry.
+**Architecture:** A pure-math `GeoMath` lib (distance/bearing/bounding-box), a `StreamingJsonParser`-based `OpenSkyStatesParser` that keeps a fixed 20-entry sorted match list in O(1) memory, a thin `OpenSkyClient` network wrapper, three new `AlmanacSettings` fields (home lat/lon as text, radius as uint8_t) persisted through the existing generic settings loop, a `FlightTrackerSettingsActivity` for editing them, a `NearbyFlightsActivity` state machine modeled directly on `OpdsBookBrowserActivity`, and a Home menu entry.
 
 **Tech Stack:** C++20 (Arduino/ESP-IDF via pioarduino), ArduinoJson is NOT used here (hand-rolled `StreamingJsonParser` instead, matching the codebase's existing OTA-release-parsing pattern), GoogleTest for host-side unit tests via CMake/CTest.
 
@@ -930,21 +930,21 @@ git commit -m "feat: add OpenSkyClient to fetch nearby aircraft from OpenSky Net
 
 ---
 
-## Task 4: CrossPointSettings fields for home location and radius
+## Task 4: AlmanacSettings fields for home location and radius
 
 **Files:**
-- Modify: `src/CrossPointSettings.h`
+- Modify: `src/AlmanacSettings.h`
 - Modify: `src/SettingsList.h`
 - Modify: `lib/I18n/translations/english.yaml`
 
 **Interfaces:**
-- Produces: `char CrossPointSettings::flightTrackerHomeLat[16]`, `char CrossPointSettings::flightTrackerHomeLon[16]` (both `""` = unset, decimal-degree text), `uint8_t CrossPointSettings::flightTrackerRadiusMiles` (default 30), plus `CrossPointSettings::FLIGHT_TRACKER_RADIUS_MIN/MAX/STEP` — consumed by `FlightTrackerSettingsActivity` (Task 5) and `NearbyFlightsActivity` (Task 6).
+- Produces: `char AlmanacSettings::flightTrackerHomeLat[16]`, `char AlmanacSettings::flightTrackerHomeLon[16]` (both `""` = unset, decimal-degree text), `uint8_t AlmanacSettings::flightTrackerRadiusMiles` (default 30), plus `AlmanacSettings::FLIGHT_TRACKER_RADIUS_MIN/MAX/STEP` — consumed by `FlightTrackerSettingsActivity` (Task 5) and `NearbyFlightsActivity` (Task 6).
 
-No dedicated host test: `CrossPointSettings` itself has no test suite in this codebase (verified via `test/` directory listing — persistence for existing fields is exercised only by the firmware build + manual on-device check, and this task follows the exact same generic `SettingInfo` mechanism those fields already use). Verified via firmware build.
+No dedicated host test: `AlmanacSettings` itself has no test suite in this codebase (verified via `test/` directory listing — persistence for existing fields is exercised only by the firmware build + manual on-device check, and this task follows the exact same generic `SettingInfo` mechanism those fields already use). Verified via firmware build.
 
-- [ ] **Step 1: Add the fields to CrossPointSettings.h**
+- [ ] **Step 1: Add the fields to AlmanacSettings.h**
 
-Open `src/CrossPointSettings.h`, find the `char opdsDownloadFolder[64] = "";` field (with its preceding comment), and add immediately after it:
+Open `src/AlmanacSettings.h`, find the `char opdsDownloadFolder[64] = "";` field (with its preceding comment), and add immediately after it:
 
 ```cpp
   // Flight tracker home location, decimal degrees as text ("" = unset). Manually
@@ -984,9 +984,9 @@ and add immediately after it (still category-less, so it persists via the generi
                             sizeof(SETTINGS.flightTrackerHomeLat), "flightTrackerHomeLat"),
         SettingInfo::String(StrId::STR_FLIGHT_TRACKER_HOME_LON, &SETTINGS.flightTrackerHomeLon[0],
                             sizeof(SETTINGS.flightTrackerHomeLon), "flightTrackerHomeLon"),
-        SettingInfo::Value(StrId::STR_FLIGHT_TRACKER_RADIUS, &CrossPointSettings::flightTrackerRadiusMiles,
-                           {CrossPointSettings::FLIGHT_TRACKER_RADIUS_MIN, CrossPointSettings::FLIGHT_TRACKER_RADIUS_MAX,
-                            CrossPointSettings::FLIGHT_TRACKER_RADIUS_STEP},
+        SettingInfo::Value(StrId::STR_FLIGHT_TRACKER_RADIUS, &AlmanacSettings::flightTrackerRadiusMiles,
+                           {AlmanacSettings::FLIGHT_TRACKER_RADIUS_MIN, AlmanacSettings::FLIGHT_TRACKER_RADIUS_MAX,
+                            AlmanacSettings::FLIGHT_TRACKER_RADIUS_STEP},
                            "flightTrackerRadiusMiles"),
 ```
 
@@ -998,7 +998,7 @@ Expected: builds cleanly. `gen_i18n.py` runs as part of this build and will hard
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/CrossPointSettings.h src/SettingsList.h lib/I18n/translations/english.yaml
+git add src/AlmanacSettings.h src/SettingsList.h lib/I18n/translations/english.yaml
 git commit -m "feat: add flight tracker home location and radius settings"
 ```
 
@@ -1014,7 +1014,7 @@ git commit -m "feat: add flight tracker home location and radius settings"
 - Modify: `lib/I18n/translations/english.yaml`
 
 **Interfaces:**
-- Consumes: `CrossPointSettings::flightTrackerHomeLat/Lon/RadiusMiles` (Task 4), `KeyboardEntryActivity` (existing, `src/activities/util/KeyboardEntryActivity.h`), `ButtonNavigator` (existing, `src/util/ButtonNavigator.h`).
+- Consumes: `AlmanacSettings::flightTrackerHomeLat/Lon/RadiusMiles` (Task 4), `KeyboardEntryActivity` (existing, `src/activities/util/KeyboardEntryActivity.h`), `ButtonNavigator` (existing, `src/util/ButtonNavigator.h`).
 - Produces: `class FlightTrackerSettingsActivity final : public Activity { explicit FlightTrackerSettingsActivity(GfxRenderer&, MappedInputManager&); };` reachable from Settings > System > "Flight Tracker".
 
 No host test: `Activity` subclasses aren't unit tested anywhere in this codebase (confirmed — no `test/` directory covers any `Activity`). Verified via firmware build + manual on-device check (flagged below).
@@ -1073,7 +1073,7 @@ Create `src/activities/settings/FlightTrackerSettingsActivity.cpp`:
 #include <cstdlib>
 #include <cstring>
 
-#include "CrossPointSettings.h"
+#include "AlmanacSettings.h"
 #include "MappedInputManager.h"
 #include "activities/ActivityManager.h"
 #include "activities/util/KeyboardEntryActivity.h"
@@ -1176,9 +1176,9 @@ void FlightTrackerSettingsActivity::handleSelection() {
   }
 
   // Search radius: tap cycles through the allowed range.
-  const uint8_t next = SETTINGS.flightTrackerRadiusMiles + CrossPointSettings::FLIGHT_TRACKER_RADIUS_STEP;
+  const uint8_t next = SETTINGS.flightTrackerRadiusMiles + AlmanacSettings::FLIGHT_TRACKER_RADIUS_STEP;
   SETTINGS.flightTrackerRadiusMiles =
-      next > CrossPointSettings::FLIGHT_TRACKER_RADIUS_MAX ? CrossPointSettings::FLIGHT_TRACKER_RADIUS_MIN : next;
+      next > AlmanacSettings::FLIGHT_TRACKER_RADIUS_MAX ? AlmanacSettings::FLIGHT_TRACKER_RADIUS_MIN : next;
   SETTINGS.saveToFile();
   requestUpdate();
 }
@@ -1308,7 +1308,7 @@ git commit -m "feat: add Flight Tracker settings screen for home location and ra
 - Modify: `lib/I18n/translations/english.yaml`
 
 **Interfaces:**
-- Consumes: `OpenSkyStatesParser`, `FlightMatch` (Task 2), `OpenSkyClient::fetchNearby` (Task 3), `CrossPointSettings::flightTrackerHomeLat/Lon/RadiusMiles` (Task 4), `GeoMath::compassPoint` (Task 1), `WifiSelectionActivity`/`KeyboardResult`-style `ActivityResult` flow, `SilentRestart.h::silentRestart()` (all existing).
+- Consumes: `OpenSkyStatesParser`, `FlightMatch` (Task 2), `OpenSkyClient::fetchNearby` (Task 3), `AlmanacSettings::flightTrackerHomeLat/Lon/RadiusMiles` (Task 4), `GeoMath::compassPoint` (Task 1), `WifiSelectionActivity`/`KeyboardResult`-style `ActivityResult` flow, `SilentRestart.h::silentRestart()` (all existing).
 - Produces: `class NearbyFlightsActivity final : public Activity { explicit NearbyFlightsActivity(GfxRenderer&, MappedInputManager&); };` — consumed by Home menu wiring (Task 7). Requires `HomeMenuItem::NEARBY_FLIGHTS` to exist (added in Task 7) for its `onGoHome(...)` calls — **Task 7's `HomeMenuItem` enum change must land before this task compiles**, so implement Task 7's enum addition first if doing these out of order, or treat Tasks 6 and 7 as one combined commit if strict incremental compilation per task matters less than usual here.
 
 No host test: `Activity` subclasses aren't unit tested anywhere in this codebase. Verified via firmware build + manual on-device check (flagged below).
@@ -1398,7 +1398,7 @@ Create `src/activities/flights/NearbyFlightsActivity.cpp`:
 #include <cstdio>
 #include <cstdlib>
 
-#include "CrossPointSettings.h"
+#include "AlmanacSettings.h"
 #include "GeoMath.h"
 #include "MappedInputManager.h"
 #include "OpenSkyClient.h"
@@ -1827,7 +1827,7 @@ void ActivityManager::goToNearbyFlights() {
 Find the `goHome()` name-detection block:
 
 ```cpp
-    } else if (activityName == "CrossPointWebServer") {
+    } else if (activityName == "AlmanacWebServer") {
       initialMenuItem = HomeMenuItem::FILE_TRANSFER;
     } else if (activityName == "Settings") {
 ```
@@ -1835,7 +1835,7 @@ Find the `goHome()` name-detection block:
 and insert a new branch between them:
 
 ```cpp
-    } else if (activityName == "CrossPointWebServer") {
+    } else if (activityName == "AlmanacWebServer") {
       initialMenuItem = HomeMenuItem::FILE_TRANSFER;
     } else if (activityName == "NearbyFlights") {
       initialMenuItem = HomeMenuItem::NEARBY_FLIGHTS;

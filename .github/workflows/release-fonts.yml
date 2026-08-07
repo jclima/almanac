@@ -1,8 +1,15 @@
 name: Build & Publish SD Card Fonts
 
+# INHERITED FROM UPSTREAM AND NOT FUNCTIONAL FOR ALMANAC AS WRITTEN.
+# FONTS_REPO below points at crosspoint-reader/crosspoint-fonts, which this
+# fork does not own, so a run will fail on the push unless FONTS_REPO is
+# repointed at a repository you control and FONTS_REPO_TOKEN is set for it.
+# Kept because the build pipeline itself is still a useful starting point.
+# It is workflow_dispatch-only, so it never fires on its own.
+#
 # Fonts change rarely — run manually when font sources or the conversion
 # pipeline are updated.  Publishes .cpfont files + fonts.json manifest as
-# GitHub Release assets on the crosspoint-fonts repo so font releases don't
+# GitHub Release assets on the fonts repo so font releases don't
 # clutter the firmware releases page.
 #
 # Requires a repository secret FONTS_REPO_TOKEN — a fine-grained PAT (or

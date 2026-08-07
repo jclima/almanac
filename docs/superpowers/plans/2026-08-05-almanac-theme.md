@@ -46,10 +46,10 @@ page-item count that doesn't match what's visible. **Overriding both is
 mandatory, not optional.**
 
 **Trap 2 — the enum and the picker list must change together.**
-`CrossPointSettings::UI_THEME` values are persisted numerically in settings
+`AlmanacSettings::UI_THEME` values are persisted numerically in settings
 JSON, and the Settings picker's `enumValues` list in `SettingsList.h` is
 *positional* (index 0 = `CLASSIC`, 1 = `LYRA`, 2 = `LYRA_3_COVERS`,
-3 = `ROUNDEDRAFF`). `CrossPointSettings::fromJson` clamps `SettingType::ENUM`
+3 = `ROUNDEDRAFF`). `AlmanacSettings::fromJson` clamps `SettingType::ENUM`
 values to `enumValues.size()`. So:
 - **Append** `ALMANAC = 4`; never insert mid-enum (that would reassign every
   saved theme).
@@ -66,13 +66,13 @@ Deliverable: "Almanac" appears in Settings, can be selected, persists across a r
 **Files:**
 - Create: `src/components/themes/almanac/AlmanacTheme.h`
 - Create: `src/components/themes/almanac/AlmanacTheme.cpp`
-- Modify: `src/CrossPointSettings.h`
+- Modify: `src/AlmanacSettings.h`
 - Modify: `src/components/UITheme.cpp`
 - Modify: `src/SettingsList.h`
 - Modify: `lib/I18n/translations/english.yaml`
 
 **Interfaces:**
-- Produces: `AlmanacMetrics::values` (a `constexpr ThemeMetrics`), `class AlmanacTheme : public BaseTheme`, and `CrossPointSettings::UI_THEME::ALMANAC` — all consumed by Task 2.
+- Produces: `AlmanacMetrics::values` (a `constexpr ThemeMetrics`), `class AlmanacTheme : public BaseTheme`, and `AlmanacSettings::UI_THEME::ALMANAC` — all consumed by Task 2.
 
 - [ ] **Step 1: Create the metrics struct and class declaration**
 
@@ -146,7 +146,7 @@ Match `BaseTheme`'s equivalents for behaviour (including the `rowStep <= 0` guar
 
 - [ ] **Step 3: Add the enum value**
 
-In `src/CrossPointSettings.h`, change:
+In `src/AlmanacSettings.h`, change:
 ```cpp
   enum UI_THEME { CLASSIC = 0, LYRA = 1, LYRA_3_COVERS = 2, ROUNDEDRAFF = 3 };
 ```
@@ -168,7 +168,7 @@ In `src/components/UITheme.cpp`, add the include alongside the others:
 
 and add a case to `setTheme`'s switch (which has no `default:`, so it will not compile until you do):
 ```cpp
-    case CrossPointSettings::UI_THEME::ALMANAC:
+    case AlmanacSettings::UI_THEME::ALMANAC:
       LOG_DBG("UI", "Using Almanac theme");
       currentTheme = std::make_unique<AlmanacTheme>();
       currentMetrics = &AlmanacMetrics::values;
@@ -184,7 +184,7 @@ STR_THEME_ALMANAC: "Almanac"
 
 Then in `src/SettingsList.h`, append it to the theme picker's value list — currently:
 ```cpp
-        SettingInfo::Enum(StrId::STR_UI_THEME, &CrossPointSettings::uiTheme,
+        SettingInfo::Enum(StrId::STR_UI_THEME, &AlmanacSettings::uiTheme,
                           {StrId::STR_THEME_CLASSIC, StrId::STR_THEME_LYRA, StrId::STR_THEME_LYRA_EXTENDED,
                            StrId::STR_THEME_ROUNDEDRAFF},
                           "uiTheme", StrId::STR_CAT_DISPLAY),
@@ -218,7 +218,7 @@ Expected: no output.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/components/themes/almanac src/CrossPointSettings.h src/components/UITheme.cpp src/SettingsList.h lib/I18n/translations/english.yaml
+git add src/components/themes/almanac src/AlmanacSettings.h src/components/UITheme.cpp src/SettingsList.h lib/I18n/translations/english.yaml
 git commit -m "feat: add Almanac theme skeleton, metrics, and registration"
 ```
 

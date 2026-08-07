@@ -1,4 +1,4 @@
-#include "CrossPointSettings.h"
+#include "AlmanacSettings.h"
 
 #include <I18n.h>
 #include <Logging.h>
@@ -28,7 +28,7 @@ void copyToField(char* dest, const char* src, const size_t maxLen) {
 
 }  // namespace
 
-void CrossPointSettings::validateFrontButtonMapping(CrossPointSettings& settings) {
+void AlmanacSettings::validateFrontButtonMapping(AlmanacSettings& settings) {
   const uint8_t mapping[] = {settings.frontButtonBack, settings.frontButtonConfirm, settings.frontButtonLeft,
                              settings.frontButtonRight};
   for (size_t i = 0; i < 4; i++) {
@@ -44,7 +44,7 @@ void CrossPointSettings::validateFrontButtonMapping(CrossPointSettings& settings
   }
 }
 
-uint8_t CrossPointSettings::sleepTimeoutEnumToMinutes(const uint8_t legacyValue) {
+uint8_t AlmanacSettings::sleepTimeoutEnumToMinutes(const uint8_t legacyValue) {
   switch (legacyValue) {
     case SLEEP_1_MIN:
       return 1;
@@ -60,8 +60,8 @@ uint8_t CrossPointSettings::sleepTimeoutEnumToMinutes(const uint8_t legacyValue)
   }
 }
 
-void CrossPointSettings::toJson(JsonDocument& doc) const {
-  const CrossPointSettings& s = *this;
+void AlmanacSettings::toJson(JsonDocument& doc) const {
+  const AlmanacSettings& s = *this;
 
   for (const auto& info : getSettingsList()) {
     if (!info.key) continue;
@@ -105,8 +105,8 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["language"] = (language < getLanguageCount()) ? LANGUAGE_CODES[language] : "EN";
 }
 
-bool CrossPointSettings::fromJson(JsonVariantConst doc) {
-  CrossPointSettings& s = *this;
+bool AlmanacSettings::fromJson(JsonVariantConst doc) {
+  AlmanacSettings& s = *this;
   bool needsResave = false;
 
   auto clamp = [](uint8_t val, uint8_t maxVal, uint8_t def) -> uint8_t { return val < maxVal ? val : def; };
@@ -225,7 +225,7 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   return true;
 }
 
-CrossPointSettings::StatusBarSpec CrossPointSettings::statusBarSpec() const {
+AlmanacSettings::StatusBarSpec AlmanacSettings::statusBarSpec() const {
   StatusBarSpec spec;
   spec.showChapterPageCount = statusBarChapterPageCount != 0;
   spec.showBookProgressPercent = statusBarBookProgressPercentage != 0;
@@ -242,8 +242,7 @@ CrossPointSettings::StatusBarSpec CrossPointSettings::statusBarSpec() const {
   return spec;
 }
 
-ReaderRenderSpec CrossPointSettings::readerRenderSpec(const uint16_t viewportWidth,
-                                                      const uint16_t viewportHeight) const {
+ReaderRenderSpec AlmanacSettings::readerRenderSpec(const uint16_t viewportWidth, const uint16_t viewportHeight) const {
   ReaderRenderSpec spec;
   spec.fontId = getReaderFontId();
   spec.lineCompression = getReaderLineCompression();
@@ -258,7 +257,7 @@ ReaderRenderSpec CrossPointSettings::readerRenderSpec(const uint16_t viewportWid
   return spec;
 }
 
-float CrossPointSettings::getReaderLineCompression() const {
+float AlmanacSettings::getReaderLineCompression() const {
   // SD card fonts use same compression as Bookerly (the most neutral values)
   if (sdFontFamilyName[0] != '\0') {
     switch (lineSpacing) {
@@ -297,14 +296,14 @@ float CrossPointSettings::getReaderLineCompression() const {
   }
 }
 
-unsigned long CrossPointSettings::getSleepTimeoutMs() const {
+unsigned long AlmanacSettings::getSleepTimeoutMs() const {
   if (sleepTimeoutMinutes >= SLEEP_TIMEOUT_NEVER_MINUTES) return 0UL;
   const uint8_t minutes =
       std::clamp(sleepTimeoutMinutes, MIN_SLEEP_TIMEOUT_MINUTES, static_cast<uint8_t>(SLEEP_TIMEOUT_NEVER_MINUTES - 1));
   return static_cast<unsigned long>(minutes) * 60UL * 1000UL;
 }
 
-int CrossPointSettings::getRefreshFrequency() const {
+int AlmanacSettings::getRefreshFrequency() const {
   switch (refreshFrequency) {
     case REFRESH_1:
       return 1;
@@ -320,14 +319,14 @@ int CrossPointSettings::getRefreshFrequency() const {
   }
 }
 
-void CrossPointSettings::clearSdFontFamily() {
+void AlmanacSettings::clearSdFontFamily() {
   sdFontFamilyName[0] = '\0';
   fontPointSize =
       snapToNearestPointSize(BUILTIN_READER_POINT_SIZES, std::size(BUILTIN_READER_POINT_SIZES), fontPointSize);
   saveToFile();
 }
 
-int CrossPointSettings::getReaderFontId() const {
+int AlmanacSettings::getReaderFontId() const {
   // Check SD card font first
   if (sdFontFamilyName[0] != '\0' && sdFontIdResolver) {
     int id = sdFontIdResolver(sdFontResolverCtx, sdFontFamilyName, fontPointSize);

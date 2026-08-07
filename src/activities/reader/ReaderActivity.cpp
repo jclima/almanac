@@ -7,7 +7,7 @@
 
 #include <optional>
 
-#include "CrossPointSettings.h"
+#include "AlmanacSettings.h"
 #include "Epub.h"
 #include "EpubReaderActivity.h"
 #include "SdCardFontSystem.h"

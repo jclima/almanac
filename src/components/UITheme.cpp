@@ -6,7 +6,7 @@
 
 #include <algorithm>
 
-#include "CrossPointSettings.h"
+#include "AlmanacSettings.h"
 #include "MappedInputManager.h"
 
 UITheme UITheme::instance;

@@ -101,6 +101,22 @@ struct ThemeMetrics {
   int textFieldLineEndOffset;
 };
 
+// The row geometry a theme actually draws, as reported by
+// BaseTheme::getButtonMenuLayout. HomeActivity hit-tests against this rather
+// than re-deriving rows from ThemeMetrics, which is how taps stay on the rows
+// on screen even when the theme adjusts its pitch (Almanac compresses gaps to
+// fit the rect) or a layout paginates. Declared here rather than in
+// MenuLayout.h because that header needs ThemeMetrics from this one, and the
+// reverse include would cycle.
+struct MenuRowLayout {
+  int top;           // y of the first drawn row
+  int rowHeight;     // drawn row height, i.e. the tappable band inside each step
+  int rowStep;       // pitch: rowHeight plus the gap below it
+  int firstIndex;    // index of the first drawn row
+  int visibleCount;  // rows actually drawn; below pageItems on a short last page
+  int pageItems;     // rows a full page holds
+};
+
 enum UIIcon { None = 0, Folder, Text, Image, Book, File, Recent, Settings, Transfer, Library, Wifi, Hotspot, Bookmark };
 
 // Shared base implementation for the UI theme. No longer user-selectable on
@@ -191,6 +207,16 @@ class BaseTheme {
   virtual void drawSideButtonHints(const GfxRenderer& renderer, const char* topBtn, const char* bottomBtn) const;
   virtual int getListRowStep(bool hasSubtitle) const;
   virtual int getListPageItems(int contentHeight, bool hasSubtitle) const;
+  // Reports the row geometry drawButtonMenu will actually draw, so callers can
+  // hit-test taps against it instead of re-deriving it from ThemeMetrics --
+  // same reason getListRowStep exists, but this one carries row height, pitch
+  // and paging so a layout can vary all three. Takes the renderer so a
+  // font-derived row height stays expressible (the retired RoundedRaff theme
+  // was that consumer).
+  //
+  // Both sides pass HomeActivity::menuRect(), which is why they agree.
+  virtual MenuRowLayout getButtonMenuLayout(const GfxRenderer& renderer, Rect rect, int buttonCount,
+                                            int selectedIndex) const;
   virtual void drawList(const GfxRenderer& renderer, Rect rect, int itemCount, int selectedIndex,
                         const std::function<std::string(int index)>& rowTitle,
                         const std::function<std::string(int index)>& rowSubtitle = nullptr,

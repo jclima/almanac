@@ -1,15 +1,35 @@
 name: "PR Formatting"
 
+# `pull_request` only. Upstream also carried a `pull_request_target` trigger, so
+# every PR ran this check TWICE and reported two identical "Title Check"
+# statuses.
+#
+# That second trigger exists to serve pull requests opened from forks, where
+# `pull_request` hands out a read-only GITHUB_TOKEN and the `statuses: write`
+# below would fail. This repository is single-author and its PRs come from
+# in-repo branches, which get a writable token on `pull_request` — so the
+# privileged trigger buys nothing here and is dropped.
+#
+# `pull_request_target` runs against the BASE repo with a writable token and
+# access to secrets; it is only safe while the workflow never checks out the
+# PR's own code, which is easy to violate later by accident. Reintroduce it
+# only if fork PRs actually need to be supported, and keep it code-free.
 on:
   pull_request:
-  pull_request_target:
     types:
       - opened
       - reopened
       - edited
+      - synchronize
 
 permissions:
   statuses: write
+
+# Editing a PR title in quick succession, or pushing again, otherwise leaves
+# the superseded check running.
+concurrency:
+  group: pr-formatting-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   title-check:
