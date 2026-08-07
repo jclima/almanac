@@ -18,6 +18,7 @@
 #include "OpdsServerStore.h"
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
+#include "components/themes/MenuLayout.h"
 #include "fontIds.h"
 
 int HomeActivity::getMenuItemCount() const {
@@ -251,14 +252,20 @@ void HomeActivity::loop() {
     return;
   }
 
-  const int menuTop = metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset;
+  const int menuTop = MenuLayout::menuTop(metrics);
   const int renderedMenuSelection =
       metrics.homeContinueReadingInMenu ? selectorIndex : selectorIndex - recentBooks.size();
   const int renderedMenuCount =
       menuCount - (metrics.homeContinueReadingInMenu ? 0 : static_cast<int>(recentBooks.size()));
+  // Hit-test against the same pitch the theme draws with, so touch targets keep
+  // tracking the rows when the gaps compress to clear the button-hints bar.
+  // Asking the theme (rather than computing it here) is what keeps the two in
+  // step for themes that reserve extra space -- Almanac's selection stroke.
+  const int menuRowStep =
+      GUI.getMenuRowStep(MenuLayout::availableHeight(metrics, renderer.getScreenHeight()), renderedMenuCount);
   int menuRow = -1;
-  const auto menuTouch = mappedInput.rowTouch(menuRow, menuTop, metrics.menuRowHeight + metrics.menuSpacing,
-                                              renderedMenuCount, 0, INT32_MAX, metrics.menuRowHeight);
+  const auto menuTouch =
+      mappedInput.rowTouch(menuRow, menuTop, menuRowStep, renderedMenuCount, 0, INT32_MAX, metrics.menuRowHeight);
   if (menuTouch != MappedInputManager::RowTouch::None) {
     const int touchedIndex =
         metrics.homeContinueReadingInMenu ? menuRow : menuRow + static_cast<int>(recentBooks.size());
@@ -318,30 +325,16 @@ void HomeActivity::render(RenderLock&&) {
     menuIcons.insert(menuIcons.begin(), Book);
   }
 
-  // The menu's own y already accounts for everything above it (header,
-  // cover tile, menu offset) via homeTopPadding + homeCoverTileHeight +
-  // homeMenuTopOffset, so the space available below it runs down to the
-  // button-hints bar and no further: pageHeight - buttonHintsHeight - menuTop.
-  // The previous formula instead subtracted headerHeight and verticalSpacing
-  // -- neither is part of this rect's y -- and never subtracted
-  // homeCoverTileHeight at all, so the computed height had no relationship
-  // to the actual space below menuTop (e.g. 636px under Almanac against a
-  // rect.y of 450 on an 800px-tall screen, a bottom of 1086). BaseTheme's,
-  // LyraTheme's and Almanac's own drawButtonMenu all ignore rect.height
-  // entirely, so that overshoot was harmless for them, but
-  // RoundedRaffTheme::drawButtonMenu pages via `rect.height / rowStep`, and
-  // an inflated height defeats that paging by fitting more items on a
-  // "page" than actually have room to draw.
-  // Clamped to >= 0: Home always renders in forced Portrait in practice
-  // (every activity that sets a non-Portrait orientation -- EpubReader,
-  // TxtReader -- resets to Portrait in its own onExit() before any other
-  // activity can render), but nothing here re-asserts that, so this guards
-  // against a negative height feeding RoundedRaffTheme's
-  // `rect.height / rowStep` paging (see the comment above) if that ever
-  // changes.
-  const int menuTop = metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset;
+  // Height is the run from the menu's own top edge down to the button-hints
+  // bar, so themes can size their rows against the space that actually exists.
+  // rect.y already accounts for everything drawn above the menu, so this is
+  // exactly "don't collide with the bar". availableHeight clamps to >= 0:
+  // Home always renders in forced Portrait in practice (EpubReader and
+  // TxtReader both reset to Portrait in their own onExit() before any other
+  // activity can render), but nothing here re-asserts that, and a negative
+  // height would feed RoundedRaffTheme's `rect.height / rowStep` paging.
   GUI.drawButtonMenu(
-      renderer, Rect{0, menuTop, pageWidth, std::max(0, pageHeight - metrics.buttonHintsHeight - menuTop)},
+      renderer, Rect{0, MenuLayout::menuTop(metrics), pageWidth, MenuLayout::availableHeight(metrics, pageHeight)},
       static_cast<int>(menuItems.size()),
       metrics.homeContinueReadingInMenu ? selectorIndex : selectorIndex - recentBooks.size(),
       [&menuItems](int index) { return std::string(menuItems[index]); },

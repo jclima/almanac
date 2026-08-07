@@ -9,6 +9,7 @@
 #include <string>
 
 #include "components/UITheme.h"
+#include "components/themes/MenuLayout.h"
 #include "fontIds.h"
 
 // Internal constants
@@ -31,7 +32,7 @@ constexpr int kFrameStroke = 2;
 // stroke's rect); the ink itself is only kSelectionStrokeWidth thick (see
 // below), so the reach's innermost pixels -- the ones touching the fill --
 // are left unpainted.
-constexpr int kSelectionStroke = 3;
+constexpr int kSelectionStroke = AlmanacTheme::kMenuSelectionReserve;
 // Ink thickness of the selection stroke. Kept smaller than kSelectionStroke
 // so the (kSelectionStroke - kSelectionStrokeWidth) px nearest the fill stay
 // white: without that gap the fill and stroke are both solid black with
@@ -89,6 +90,16 @@ int AlmanacTheme::getListPageItems(const int contentHeight, const bool hasSubtit
   const int rowStep = getListRowStep(hasSubtitle);
   if (rowStep <= 0) return 1;
   return std::max(1, contentHeight / rowStep);
+}
+
+int AlmanacTheme::getMenuRowStep(const int availableHeight, const int rowCount) const {
+  // Reserve the selection stroke: it is drawn kSelectionStroke px outside the
+  // selected tile's fill, so budgeting only the tiles leaves the bottom tile
+  // fitting while its stroke still crosses into the button-hints bar. Without
+  // this the 6-tile menu (OPDS configured) overshoots by exactly 1px.
+  return MenuLayout::fittedRowStep(std::max(0, availableHeight - kSelectionStroke),
+                                   AlmanacMetrics::values.menuRowHeight,
+                                   AlmanacMetrics::values.menuRowHeight + AlmanacMetrics::values.menuSpacing, rowCount);
 }
 
 void AlmanacTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle) const {
@@ -453,25 +464,16 @@ void AlmanacTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCo
   // HomeActivity derives it as `pageHeight - buttonHintsHeight - menuTop`, so
   // staying inside it is exactly "don't collide with the bar".
   //
-  // Squeeze the gaps first, since spacing is the cheapest thing to lose, and
-  // only shrink the tiles themselves if that is not enough. Both are no-ops
-  // whenever the menu already fits, which is every case up to 5 tiles.
-  // kSelectionStroke is reserved because the selected tile's stroke is drawn
-  // that far OUTSIDE its fill: budgeting only the tiles themselves leaves the
-  // bottom tile fitting while its stroke still crosses into the bar by 3px.
-  const int topOffset = AlmanacMetrics::values.verticalSpacing;
-  const int available = std::max(0, rect.height - topOffset - kSelectionStroke);
-  int rowHeight = AlmanacMetrics::values.menuRowHeight;
-  int spacing = AlmanacMetrics::values.menuSpacing;
-  if (buttonCount > 1 && buttonCount * rowHeight + (buttonCount - 1) * spacing > available) {
-    spacing = std::max(0, (available - buttonCount * rowHeight) / (buttonCount - 1));
-  }
-  if (buttonCount > 0 && buttonCount * rowHeight + (buttonCount - 1) * spacing > available) {
-    rowHeight = std::max(1, (available - (buttonCount - 1) * spacing) / buttonCount);
-  }
+  // getMenuRowStep (overridden below to reserve kSelectionStroke) compresses
+  // the gaps; rows keep their full height so labels stay legible. Rows start
+  // at rect.y with no leading verticalSpacing -- homeMenuTopOffset already
+  // separates them from the cover tile, and the offset previously added here
+  // put the drawn rows 10px below the rows HomeActivity hit-tests.
+  const int rowStep = getMenuRowStep(rect.height, buttonCount);
+  const int rowHeight = AlmanacMetrics::values.menuRowHeight;
 
   for (int i = 0; i < buttonCount; ++i) {
-    const int tileY = topOffset + rect.y + i * (rowHeight + spacing);
+    const int tileY = rect.y + i * rowStep;
     const int tileX = rect.x + AlmanacMetrics::values.contentSidePadding;
     const int tileWidth = rect.width - AlmanacMetrics::values.contentSidePadding * 2;
     const int tileHeight = rowHeight;
@@ -483,14 +485,15 @@ void AlmanacTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCo
       // white gap between them (see the kSelectionStrokeWidth comment near
       // the top of this file) so the two levels read as distinct on all
       // four sides of the tile, not just top/bottom. Unlike the list, menu
-      // tiles aren't packed edge-to-edge inside a shared frame -- each tile
-      // has menuSpacing (8px) between it and its neighbours, comfortably
-      // more than the stroke's reach (3px), so no clamping against adjacent
-      // tiles is needed here. The *last* tile against the button-hints bar
-      // used to be the exception -- with 6 menu items (OPDS enabled) the
-      // fixed pitch pushed its bottom past the bar, and this stroke added
-      // 3px on top of that -- but the fit-to-rect.height layout above now
-      // keeps every tile, stroke included, inside the menu's own rect.
+      // tiles aren't packed edge-to-edge inside a shared frame -- there is a
+      // gap of (rowStep - rowHeight) between neighbours, which the fit above
+      // compresses from menuSpacing (8px) down to 5px at the largest menu
+      // this screen can produce (6 tiles, OPDS enabled). Still wider than the
+      // stroke's 3px reach, so no clamping against adjacent tiles is needed.
+      // The *last* tile against the button-hints bar used to be the exception
+      // -- the old fixed pitch pushed its bottom past the bar and this stroke
+      // added 3px on top of that -- but getMenuRowStep reserves that reach,
+      // so every tile, stroke included, now stays inside the menu's rect.
       // width-1/height-1 below for the same reason as drawList's frame draw.
       renderer.fillRect(tileX, tileY, tileWidth, tileHeight, true);
       renderer.drawRect(tileX - kSelectionStroke, tileY - kSelectionStroke, tileWidth + kSelectionStroke * 2 - 1,

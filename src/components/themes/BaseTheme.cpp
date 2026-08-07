@@ -15,6 +15,7 @@
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
 #include "components/icons/bookmark.h"
+#include "components/themes/MenuLayout.h"
 #include "fontIds.h"
 
 // Internal constants
@@ -262,6 +263,16 @@ int BaseTheme::getListPageItems(int contentHeight, bool hasSubtitle) const {
   const int rowStep = getListRowStep(hasSubtitle);
   if (rowStep <= 0) return 1;
   return std::max(1, contentHeight / rowStep);
+}
+
+int BaseTheme::getMenuRowStep(const int availableHeight, const int rowCount) const {
+  // Reads the *active* metrics rather than BaseMetrics so themes that inherit
+  // this implementation (Lyra, Lyra 3 Covers, RoundedRaff) get their own pitch
+  // -- the same value HomeActivity's hit-test used before this was factored
+  // out, so their behaviour is unchanged.
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  return MenuLayout::fittedRowStep(availableHeight, metrics.menuRowHeight, metrics.menuRowHeight + metrics.menuSpacing,
+                                   rowCount);
 }
 
 void BaseTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, int selectedIndex,
@@ -697,9 +708,15 @@ void BaseTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
 void BaseTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                                const std::function<std::string(int index)>& buttonLabel,
                                const std::function<UIIcon(int index)>& rowIcon) const {
+  // Rows start at rect.y -- homeMenuTopOffset already separates them from the
+  // cover tile -- and their gaps compress if the menu would otherwise run into
+  // the button-hints bar. Menus that already fit keep their natural pitch.
+  // Via the virtual, not MenuLayout directly, so HomeActivity's hit-test and
+  // this draw always resolve to the same theme's arithmetic.
+  const int rowStep = getMenuRowStep(rect.height, buttonCount);
+
   for (int i = 0; i < buttonCount; ++i) {
-    const int tileY = BaseMetrics::values.verticalSpacing + rect.y +
-                      static_cast<int>(i) * (BaseMetrics::values.menuRowHeight + BaseMetrics::values.menuSpacing);
+    const int tileY = rect.y + i * rowStep;
 
     const bool selected = selectedIndex == i;
 
