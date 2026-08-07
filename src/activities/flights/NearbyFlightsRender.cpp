@@ -132,7 +132,14 @@ void NearbyFlightsActivity::renderList() {
         });
   }
 
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_RADAR), tr(STR_DIR_DOWN));
+  // With no aircraft there is nothing to select and nothing to scroll, so
+  // advertising Select and Down would be hints that lie. Long-press-Confirm
+  // refreshes in both states (handleConfirmPressOrRefresh gates only the
+  // short press on hasMatches), and this empty slot is the one place the
+  // gesture can be named without dropping a hint that does work.
+  const auto labels = matchCount == 0
+                          ? mappedInput.mapLabels(tr(STR_BACK), tr(STR_REFRESH), tr(STR_RADAR), "")
+                          : mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_RADAR), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   renderer.displayBuffer();
 }
@@ -160,7 +167,9 @@ void NearbyFlightsActivity::renderRadar() {
     char message[48];
     snprintf(message, sizeof(message), tr(STR_NO_FLIGHTS_FORMAT), static_cast<int>(SETTINGS.flightTrackerRadiusMiles));
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, message);
-    const auto emptyLabels = mappedInput.mapLabels(tr(STR_BACK), "", tr(STR_LIST_VIEW), "");
+    // Same reasoning as the empty list above: name the refresh in the slot
+    // that would otherwise sit blank.
+    const auto emptyLabels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_REFRESH), tr(STR_LIST_VIEW), "");
     GUI.drawButtonHints(renderer, emptyLabels.btn1, emptyLabels.btn2, emptyLabels.btn3, emptyLabels.btn4);
     renderer.displayBuffer();
     return;

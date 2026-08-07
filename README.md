@@ -80,18 +80,20 @@ applies to a fresh install.
 **Version 1.0.0** — Almanac's own numbering, restarted at 1.0.0 rather than
 continuing CrossPoint's. Built and flashed on real X4 hardware.
 
-Verified by CI on every change: the `default`, `gh_release`, `slim` and
-`sticky` build environments; 178 host unit tests; `clang-format` (pinned to
-version 21); and `cppcheck`, which fails the build on a single finding of any
-severity.
+Verified by CI on every change: the `default` and `sticky` build environments
+(the two target MCU families — see [Build environments](#build-environments));
+the host unit-test suite; `clang-format` (pinned to version 21); and `cppcheck`,
+which fails the build on a single finding of any severity. The `gh_release`,
+`gh_release_rc` and `slim` environments differ from `default` only in logging
+level, so CI does not build them per change.
 
 Verified on device: boots to Home, reads settings and caches from the SD card,
 no off-panel draw errors, no panics, ~162 KB free heap at idle against a ~380 KB
 total.
 
 Not yet verified on device: the theme across all screens in both orientations,
-and the flight tracker end to end. This is one person's firmware on one device —
-treat it accordingly.
+the flight tracker end to end, and reading progress surviving an upgrade. This
+is one person's firmware on one device — treat it accordingly.
 
 ## Install
 
