@@ -21,6 +21,7 @@ class AlmanacSettings : public PersistableStore<AlmanacSettings> {
     COVER_CUSTOM = 4,
     BLANK = 5,
     QUICK_RESUME = 6,
+    TESSERAE = 7,
     SLEEP_SCREEN_MODE_COUNT
   };
   enum SLEEP_SCREEN_COVER_MODE { FIT = 0, CROP = 1, SLEEP_SCREEN_COVER_MODE_COUNT };
@@ -239,6 +240,13 @@ class AlmanacSettings : public PersistableStore<AlmanacSettings> {
   // (category-less), same pattern as opdsDownloadFolder.
   char flightTrackerHomeLat[16] = "";
   char flightTrackerHomeLon[16] = "";
+  // Tesserae's base URL and per-device credentials. The token is persisted
+  // obfuscated through SettingsList.h and never rendered in the device UI.
+  // An empty device ID means "derive a stable ID from the Wi-Fi MAC".
+  char tesseraeServerUrl[192] = "";
+  char tesseraeDeviceId[33] = "";
+  char tesseraeDeviceToken[256] = "";
+  uint8_t tesseraeGrayscale = 0;
   static constexpr uint8_t FLIGHT_TRACKER_RADIUS_MIN = 5;
   static constexpr uint8_t FLIGHT_TRACKER_RADIUS_MAX = 200;
   static constexpr uint8_t FLIGHT_TRACKER_RADIUS_STEP = 5;

@@ -22,6 +22,7 @@
 #include "SdFirmwareUpdateActivity.h"
 #include "SettingsList.h"
 #include "StatusBarSettingsActivity.h"
+#include "TesseraeSettingsActivity.h"
 #include "TextSettingsActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/util/IntervalSelectionActivity.h"
@@ -73,6 +74,9 @@ void SettingsActivity::rebuildSettingsLists() {
   }
   systemSettings.push_back(SettingInfo::Action(StrId::STR_WIFI_NETWORKS, SettingAction::Network));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_FLIGHT_TRACKER, SettingAction::FlightTracker));
+  if (gpio.isXteinkDevice()) {
+    systemSettings.push_back(SettingInfo::Action(StrId::STR_TESSERAE, SettingAction::Tesserae));
+  }
   systemSettings.push_back(SettingInfo::Action(StrId::STR_KOREADER_SYNC, SettingAction::KOReaderSync));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_OPDS_SERVERS, SettingAction::OPDSBrowser));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache));
@@ -382,6 +386,9 @@ void SettingsActivity::toggleCurrentSetting() {
         break;
       case SettingAction::FlightTracker:
         startActivityForResult(std::make_unique<FlightTrackerSettingsActivity>(renderer, mappedInput), resultHandler);
+        break;
+      case SettingAction::Tesserae:
+        startActivityForResult(std::make_unique<TesseraeSettingsActivity>(renderer, mappedInput), resultHandler);
         break;
       case SettingAction::ClearCache:
         startActivityForResult(std::make_unique<ClearCacheActivity>(renderer, mappedInput), resultHandler);

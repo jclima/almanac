@@ -6,8 +6,12 @@
 #include <HalGPIO.h>
 #include <HalStorage.h>
 #include <I18n.h>
+#include <Logging.h>
+#include <TesseraeFrame.h>
 #include <Txt.h>
 #include <Xtc.h>
+
+#include <algorithm>
 
 #include "AlmanacSettings.h"
 #include "AlmanacState.h"
@@ -16,6 +20,30 @@
 #include "fontIds.h"
 #include "images/Logo120.h"
 #include "images/MoonIcon.h"
+#include "network/TesseraeClient.h"
+
+namespace {
+constexpr char TESSERAE_FRAME_FILE[] = "/.crosspoint/tesserae_frame.bin";
+constexpr size_t TESSERAE_READ_CHUNK = 1024;
+
+bool loadTesseraeGrayPlane(HalFile& file, uint8_t* destination, const size_t destinationSize,
+                           const tesserae::GrayPlane plane) {
+  if (!file.seek(0)) return false;
+
+  uint8_t input[TESSERAE_READ_CHUNK];
+  size_t written = 0;
+  while (written < destinationSize) {
+    const size_t remainingInput = (destinationSize - written) * 2;
+    const size_t requested = std::min(sizeof(input), remainingInput);
+    const int bytesRead = file.read(input, requested);
+    if (bytesRead != static_cast<int>(requested) || (bytesRead & 1) != 0) return false;
+    for (int i = 0; i < bytesRead; i += 2) {
+      destination[written++] = tesserae::expandGray2Pair(input[i], input[i + 1], plane);
+    }
+  }
+  return written == destinationSize;
+}
+}  // namespace
 
 void SleepActivity::onEnter() {
   Activity::onEnter();
@@ -51,6 +79,10 @@ void SleepActivity::onEnter() {
       } else {
         return renderCustomSleepScreen();
       }
+    case (AlmanacSettings::SLEEP_SCREEN_MODE::TESSERAE):
+      if (renderTesseraeSleepScreen()) return;
+      LOG_DBG("TESS", "Falling back to the default sleep screen");
+      return renderDefaultSleepScreen();
     default:
       return renderDefaultSleepScreen();
   }
@@ -345,4 +377,104 @@ void SleepActivity::renderLastScreenSleepScreen() const {
 void SleepActivity::renderBlankSleepScreen() const {
   renderer.clearScreen();
   renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+}
+
+bool SleepActivity::renderTesseraeSleepScreen() const {
+  if (!gpio.isXteinkDevice() || !TesseraeClient::isConfigured()) return false;
+
+  TesseraeClient::Result result = TesseraeClient::connectSavedWifi();
+  if (result != TesseraeClient::Result::Ok) {
+    LOG_ERR("TESS", "Wi-Fi unavailable: %s", TesseraeClient::resultName(result));
+    return false;
+  }
+
+  const uint16_t panelWidth = static_cast<uint16_t>(renderer.getScreenWidth());
+  const uint16_t panelHeight = static_cast<uint16_t>(renderer.getScreenHeight());
+  if (!TesseraeClient::isRegistered()) {
+    result = TesseraeClient::discover(panelWidth, panelHeight);
+    if (result != TesseraeClient::Result::Ok) {
+      LOG_DBG("TESS", "Registration unavailable: %s", TesseraeClient::resultName(result));
+      return false;
+    }
+  }
+
+  TesseraeClient::FrameInfo frame;
+  result = TesseraeClient::fetchFrame(frame);
+  if (result != TesseraeClient::Result::Ok) {
+    LOG_ERR("TESS", "Frame metadata unavailable: %s", TesseraeClient::resultName(result));
+    return false;
+  }
+  if (frame.panelWidth != panelWidth || frame.panelHeight != panelHeight) {
+    LOG_ERR("TESS", "Frame dimensions %ux%u do not match panel %ux%u", frame.panelWidth, frame.panelHeight, panelWidth,
+            panelHeight);
+    TesseraeClient::clearRegistration();
+    return false;
+  }
+
+  const size_t monoSize = renderer.getBufferSize();
+  const size_t expectedFrameSize = tesserae::encodedFrameSize(
+      monoSize, SETTINGS.tesseraeGrayscale ? tesserae::FrameDepth::Gray2 : tesserae::FrameDepth::Mono1);
+  result = TesseraeClient::downloadFrame(frame, TESSERAE_FRAME_FILE, expectedFrameSize);
+  if (result != TesseraeClient::Result::Ok) {
+    LOG_ERR("TESS", "Frame download failed: %s", TesseraeClient::resultName(result));
+    return false;
+  }
+
+  HalFile file;
+  if (!Storage.openFileForRead("TESS", TESSERAE_FRAME_FILE, file)) {
+    Storage.remove(TESSERAE_FRAME_FILE);
+    return false;
+  }
+
+  const size_t frameSize = file.size();
+  const bool isMono = frameSize == tesserae::encodedFrameSize(monoSize, tesserae::FrameDepth::Mono1);
+  const bool isGray = frameSize == tesserae::encodedFrameSize(monoSize, tesserae::FrameDepth::Gray2);
+  const bool expectedDepth = SETTINGS.tesseraeGrayscale ? isGray : isMono;
+  if (!expectedDepth) {
+    LOG_ERR("TESS", "Unexpected frame size: %zu (expected %zu)", frameSize, expectedFrameSize);
+    file.close();
+    Storage.remove(TESSERAE_FRAME_FILE);
+    TesseraeClient::clearRegistration();
+    return false;
+  }
+
+  // The reference client reports telemetry while the radio is still up and
+  // before the slow e-ink paint. A failed heartbeat must not discard a frame
+  // that was already downloaded and validated.
+  const auto statusResult = TesseraeClient::postStatus(panelWidth, panelHeight);
+  if (statusResult != TesseraeClient::Result::Ok) {
+    LOG_DBG("TESS", "Status heartbeat failed: %s", TesseraeClient::resultName(statusResult));
+  }
+
+  bool rendered = false;
+  if (isMono) {
+    rendered = file.read(renderer.getFrameBuffer(), monoSize) == static_cast<int>(monoSize);
+    file.close();
+    Storage.remove(TESSERAE_FRAME_FILE);
+    if (rendered) renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+    return rendered;
+  }
+
+  uint8_t* const buffer = renderer.getFrameBuffer();
+  if (!loadTesseraeGrayPlane(file, buffer, monoSize, tesserae::GrayPlane::Base)) {
+    file.close();
+    Storage.remove(TESSERAE_FRAME_FILE);
+    return false;
+  }
+  renderer.displayGrayscaleBase(HalDisplay::HALF_REFRESH);
+  renderer.preconditionGrayscale();  // no-op on X4; required by X3's gray waveform
+
+  if (loadTesseraeGrayPlane(file, buffer, monoSize, tesserae::GrayPlane::Lsb)) {
+    renderer.copyGrayscaleLsbBuffers();
+    if (loadTesseraeGrayPlane(file, buffer, monoSize, tesserae::GrayPlane::Msb)) {
+      renderer.copyGrayscaleMsbBuffers();
+      renderer.displayGrayBuffer();
+      renderer.setRenderMode(GfxRenderer::BW);
+      rendered = true;
+    }
+  }
+
+  file.close();
+  Storage.remove(TESSERAE_FRAME_FILE);
+  return rendered;
 }
