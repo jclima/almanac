@@ -442,12 +442,39 @@ void AlmanacTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCo
   // BaseTheme and RoundedRaffTheme, both of which also ignore this callback.
   (void)rowIcon;
 
+  // Fit the tiles to rect.height instead of laying them out at a fixed pitch
+  // that ignores it.
+  //
+  // HomeActivity shows a 6th menu tile once an OPDS server is configured. At
+  // the nominal pitch that tile's bottom lands 18px past the button-hints bar
+  // under this theme (10px under Base -- same formula, shorter bar), and
+  // because this theme's bar is a solid full-width black fill, the overlap
+  // eats the tile's LABEL, not just its border. rect.height is authoritative:
+  // HomeActivity derives it as `pageHeight - buttonHintsHeight - menuTop`, so
+  // staying inside it is exactly "don't collide with the bar".
+  //
+  // Squeeze the gaps first, since spacing is the cheapest thing to lose, and
+  // only shrink the tiles themselves if that is not enough. Both are no-ops
+  // whenever the menu already fits, which is every case up to 5 tiles.
+  // kSelectionStroke is reserved because the selected tile's stroke is drawn
+  // that far OUTSIDE its fill: budgeting only the tiles themselves leaves the
+  // bottom tile fitting while its stroke still crosses into the bar by 3px.
+  const int topOffset = AlmanacMetrics::values.verticalSpacing;
+  const int available = std::max(0, rect.height - topOffset - kSelectionStroke);
+  int rowHeight = AlmanacMetrics::values.menuRowHeight;
+  int spacing = AlmanacMetrics::values.menuSpacing;
+  if (buttonCount > 1 && buttonCount * rowHeight + (buttonCount - 1) * spacing > available) {
+    spacing = std::max(0, (available - buttonCount * rowHeight) / (buttonCount - 1));
+  }
+  if (buttonCount > 0 && buttonCount * rowHeight + (buttonCount - 1) * spacing > available) {
+    rowHeight = std::max(1, (available - (buttonCount - 1) * spacing) / buttonCount);
+  }
+
   for (int i = 0; i < buttonCount; ++i) {
-    const int tileY = AlmanacMetrics::values.verticalSpacing + rect.y +
-                      i * (AlmanacMetrics::values.menuRowHeight + AlmanacMetrics::values.menuSpacing);
+    const int tileY = topOffset + rect.y + i * (rowHeight + spacing);
     const int tileX = rect.x + AlmanacMetrics::values.contentSidePadding;
     const int tileWidth = rect.width - AlmanacMetrics::values.contentSidePadding * 2;
-    const int tileHeight = AlmanacMetrics::values.menuRowHeight;
+    const int tileHeight = rowHeight;
 
     const bool selected = selectedIndex == i;
     if (selected) {
@@ -459,13 +486,12 @@ void AlmanacTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCo
       // tiles aren't packed edge-to-edge inside a shared frame -- each tile
       // has menuSpacing (8px) between it and its neighbours, comfortably
       // more than the stroke's reach (3px), so no clamping against adjacent
-      // tiles is needed here. (This does NOT cover the *last* tile against
-      // the button-hints bar below the menu -- see the report: with 6 menu
-      // items (OPDS enabled) HomeActivity's own tile-position formula
-      // already lands the last tile's unstroked bottom past the
-      // button-hints bar in every theme, pre-existing and out of this
-      // file's scope; the stroke here adds 3px on top of that.) width-1/
-      // height-1 below for the same reason as drawList's frame draw.
+      // tiles is needed here. The *last* tile against the button-hints bar
+      // used to be the exception -- with 6 menu items (OPDS enabled) the
+      // fixed pitch pushed its bottom past the bar, and this stroke added
+      // 3px on top of that -- but the fit-to-rect.height layout above now
+      // keeps every tile, stroke included, inside the menu's own rect.
+      // width-1/height-1 below for the same reason as drawList's frame draw.
       renderer.fillRect(tileX, tileY, tileWidth, tileHeight, true);
       renderer.drawRect(tileX - kSelectionStroke, tileY - kSelectionStroke, tileWidth + kSelectionStroke * 2 - 1,
                         tileHeight + kSelectionStroke * 2 - 1, kSelectionStrokeWidth, true);
