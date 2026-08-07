@@ -28,21 +28,13 @@ TEST(GeoMath, DistanceIsSymmetric) {
   EXPECT_NEAR(ab, ba, 1e-6);
 }
 
-TEST(GeoMath, BearingDueNorth) {
-  EXPECT_NEAR(GeoMath::initialBearingDegrees(0.0, 0.0, 1.0, 0.0), 0.0, 0.5);
-}
+TEST(GeoMath, BearingDueNorth) { EXPECT_NEAR(GeoMath::initialBearingDegrees(0.0, 0.0, 1.0, 0.0), 0.0, 0.5); }
 
-TEST(GeoMath, BearingDueEast) {
-  EXPECT_NEAR(GeoMath::initialBearingDegrees(0.0, 0.0, 0.0, 1.0), 90.0, 0.5);
-}
+TEST(GeoMath, BearingDueEast) { EXPECT_NEAR(GeoMath::initialBearingDegrees(0.0, 0.0, 0.0, 1.0), 90.0, 0.5); }
 
-TEST(GeoMath, BearingDueSouth) {
-  EXPECT_NEAR(GeoMath::initialBearingDegrees(0.0, 0.0, -1.0, 0.0), 180.0, 0.5);
-}
+TEST(GeoMath, BearingDueSouth) { EXPECT_NEAR(GeoMath::initialBearingDegrees(0.0, 0.0, -1.0, 0.0), 180.0, 0.5); }
 
-TEST(GeoMath, BearingDueWest) {
-  EXPECT_NEAR(GeoMath::initialBearingDegrees(0.0, 0.0, 0.0, -1.0), 270.0, 0.5);
-}
+TEST(GeoMath, BearingDueWest) { EXPECT_NEAR(GeoMath::initialBearingDegrees(0.0, 0.0, 0.0, -1.0), 270.0, 0.5); }
 
 TEST(GeoMath, CompassPointCardinals) {
   EXPECT_STREQ(GeoMath::compassPoint(0.0), "N");

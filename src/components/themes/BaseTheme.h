@@ -103,8 +103,10 @@ struct ThemeMetrics {
 
 enum UIIcon { None = 0, Folder, Text, Image, Book, File, Recent, Settings, Transfer, Library, Wifi, Hotspot, Bookmark };
 
-// Default theme implementation (Classic Theme)
-// Additional themes can inherit from this and override methods as needed
+// Shared base implementation for the UI theme. No longer user-selectable on
+// its own (it shipped as the "Classic" theme when the firmware had a theme
+// picker): AlmanacTheme is the only theme, overriding the handful of methods
+// that carry its instrument-panel look and inheriting everything else here.
 
 namespace BaseMetrics {
 constexpr ThemeMetrics values = {.batteryWidth = 15,

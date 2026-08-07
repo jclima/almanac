@@ -13,9 +13,8 @@ bool OpenSkyClient::fetchNearby(const double homeLat, const double homeLon, cons
   const auto box = GeoMath::computeBoundingBox(homeLat, homeLon, radiusMiles);
 
   char url[192];
-  snprintf(url, sizeof(url),
-           "https://opensky-network.org/api/states/all?lamin=%.4f&lomin=%.4f&lamax=%.4f&lomax=%.4f", box.latMin,
-           box.lonMin, box.latMax, box.lonMax);
+  snprintf(url, sizeof(url), "https://opensky-network.org/api/states/all?lamin=%.4f&lomin=%.4f&lamax=%.4f&lomax=%.4f",
+           box.latMin, box.lonMin, box.latMax, box.lonMax);
 
   LOG_DBG("OPENSKY", "Fetching: %s", url);
 

@@ -27,8 +27,7 @@ double distanceMiles(const double lat1Deg, const double lon1Deg, const double la
   return EARTH_RADIUS_MILES * c;
 }
 
-double initialBearingDegrees(const double lat1Deg, const double lon1Deg, const double lat2Deg,
-                             const double lon2Deg) {
+double initialBearingDegrees(const double lat1Deg, const double lon1Deg, const double lat2Deg, const double lon2Deg) {
   const double lat1 = lat1Deg * DEG_TO_RAD;
   const double lat2 = lat2Deg * DEG_TO_RAD;
   const double dLon = (lon2Deg - lon1Deg) * DEG_TO_RAD;
@@ -56,8 +55,8 @@ BoundingBox computeBoundingBox(const double lat, const double lon, const double 
   return BoundingBox{lat - latSpan, lon - lonSpan, lat + latSpan, lon + lonSpan};
 }
 
-ScreenPoint polarToScreen(const double distanceMiles, const double bearingDeg, const double maxRangeMiles,
-                          const int cx, const int cy, const int radiusPx) {
+ScreenPoint polarToScreen(const double distanceMiles, const double bearingDeg, const double maxRangeMiles, const int cx,
+                          const int cy, const int radiusPx) {
   if (maxRangeMiles <= 0.0 || radiusPx <= 0) {
     return ScreenPoint{cx, cy};
   }

@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <string>
 
+#include "CrossPointSettings.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -55,8 +56,8 @@ constexpr int kMenuTileStroke = 2;
 // AlmanacMetrics::values.batteryWidth/batteryHeight -- the same icon
 // footprint BaseTheme's pictogram uses -- so it reads as the same battery
 // icon, just recoloured for this bar.
-void drawBatteryPictogramWhite(const GfxRenderer& renderer, const int x, const int y, const int width,
-                               const int height, const int percentage) {
+void drawBatteryPictogramWhite(const GfxRenderer& renderer, const int x, const int y, const int width, const int height,
+                               const int percentage) {
   // Casing: top/bottom walls, left wall, right end-cap plus a small terminal
   // nub -- same geometry as BaseTheme::drawBatteryOutline.
   renderer.drawLine(x + 1, y, x + width - 3, y, false);
@@ -102,8 +103,9 @@ void AlmanacTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char
   // BaseTheme::drawBatteryLeft/Right draw the battery casing via the static,
   // non-virtual drawBatteryOutline() helper, which is hardcoded to draw
   // black lines (see BaseTheme.cpp) -- invisible against this bar's black
-  // fill, and shared by every other theme, so recoloring it is out of
-  // AlmanacTheme's scope. Show the percentage as white text instead of the
+  // fill, and still serving the black-on-white contexts AlmanacTheme
+  // inherits (the reader status bar draws through it), so recoloring it is
+  // not an option. Show the percentage as white text instead of the
   // pictogram when hideBatteryPercentage allows it: reads more like an
   // instrument-panel readout than the icon would have. Under HIDE_ALWAYS
   // there is no percentage to fall back on, so this draws
@@ -120,11 +122,11 @@ void AlmanacTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char
     batteryText = std::to_string(powerManager.getBatteryPercentage()) + "%";
   }
 
-  // Charging cue: every other theme draws BaseTheme::fillBatteryIcon's
-  // lightning bolt whenever gpio.isUsbConnected(), and does so
-  // unconditionally on hideBatteryPercentage (see BaseTheme.cpp's
-  // drawBatteryRight -> fillBatteryIcon call, which always runs; only the
-  // percentage *text* is gated there). The pictogram itself is gone for the
+  // Charging cue: BaseTheme's own header draws fillBatteryIcon's lightning
+  // bolt whenever gpio.isUsbConnected(), and does so unconditionally on
+  // hideBatteryPercentage (see BaseTheme.cpp's drawBatteryRight ->
+  // fillBatteryIcon call, which always runs; only the percentage *text* is
+  // gated there). The pictogram itself is gone for the
   // same drawBatteryOutline reason as above, but drawBatteryLightningBolt is
   // a separate, static, colour-parameterless-but-already-white helper
   // (it plots with state=false -- "white/inverted on black fill for
@@ -167,8 +169,7 @@ void AlmanacTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char
 
   // Title (left) and subtitle (right, e.g. Settings' version string or the
   // flight tracker's transient error message) share whatever space remains
-  // between the left padding and the battery reservation, split the same
-  // way LyraTheme::drawHeader splits title vs subtitle: give each its
+  // between the left padding and the battery reservation: give each its
   // natural width unless they overflow the available space, in which case
   // shrink the wider one first (or both, if both exceed half).
   int maxTitleWidth = title != nullptr ? renderer.getTextWidth(UI_12_FONT_ID, title, EpdFontFamily::BOLD) : 0;
@@ -206,8 +207,7 @@ void AlmanacTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, cons
   }
 
   // Button hints are always drawn against the physical bottom edge in
-  // forced Portrait orientation, matching BaseTheme::drawButtonHints /
-  // LyraTheme::drawButtonHints.
+  // forced Portrait orientation, matching BaseTheme::drawButtonHints.
   const GfxRenderer::Orientation origOrientation = renderer.getOrientation();
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
 
@@ -254,17 +254,18 @@ void AlmanacTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCoun
   // file browser already renders "[folder]" bracket notation instead of
   // relying on an icon -- self-consistent with not drawing one here.
   (void)rowIcon;
-  // BaseTheme::drawList never reads highlightValue either -- its only use
-  // (LyraTheme) draws an extra inverted box behind the value text so it
-  // stands out against LyraTheme's own selection fill. Almanac's selected
-  // row is already fully inverted (filled black, white text), so a nested
-  // highlight box would be redundant emphasis inside emphasis.
+  // BaseTheme::drawList never reads highlightValue either -- its only
+  // consumer ever (the retired Lyra theme) drew an extra inverted box
+  // behind the value text so it stood out against that theme's selection
+  // fill. Almanac's selected row is already fully inverted (filled black,
+  // white text), so a nested highlight box would be redundant emphasis
+  // inside emphasis.
   (void)highlightValue;
 
   const bool hasSubtitle = rowSubtitle != nullptr;
   // Use this theme's own overrides rather than re-deriving row height/page
-  // size inline (as BaseTheme/LyraTheme do): every other caller that needs
-  // the same numbers -- MappedInputManager's page-navigation, several
+  // size inline (as BaseTheme does): every other caller that needs the
+  // same numbers -- MappedInputManager's page-navigation, several
   // Activities' own pageItems math -- goes through these same two virtuals,
   // so routing drawList's internal windowing through them too is what keeps
   // "how many rows are on screen" and "where does paging jump to" in sync.
@@ -285,11 +286,10 @@ void AlmanacTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCoun
   // with nothing extra to keep in sync with getListPageItems.
   renderer.drawRect(rect.x, rect.y, rect.width - 1, rect.height - 1, kFrameStroke, true);
 
-  // Reserve room for a scrollbar (mirroring LyraTheme/RoundedRaffTheme) when
-  // there's more than one page -- BaseTheme::drawList's up/down corner
-  // arrows are this theme's closest carried-over behaviour, reimagined as a
-  // gauge-like strip rather than arrows, but the point (a paging indicator
-  // exists at all) is preserved.
+  // Reserve room for a scrollbar when there's more than one page --
+  // BaseTheme::drawList's up/down corner arrows are this theme's closest
+  // carried-over behaviour, reimagined as a gauge-like strip rather than
+  // arrows, but the point (a paging indicator exists at all) is preserved.
   const bool showScrollBar = totalPages > 1 && itemCount > 0;
   int contentRight = rect.x + rect.width - kFrameStroke;
   if (showScrollBar) {
@@ -430,12 +430,29 @@ void AlmanacTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCo
                                   const std::function<UIIcon(int index)>& rowIcon) const {
   // Same constraint as drawList: GfxRenderer::drawIcon always plots black
   // ink, so it would vanish against the selected tile's black fill. Matches
-  // BaseTheme and RoundedRaffTheme, both of which also ignore this callback.
+  // BaseTheme, which also ignores this callback.
   (void)rowIcon;
 
-  for (int i = 0; i < buttonCount; ++i) {
-    const int tileY = AlmanacMetrics::values.verticalSpacing + rect.y +
-                      i * (AlmanacMetrics::values.menuRowHeight + AlmanacMetrics::values.menuSpacing);
+  // Page on rect.height, which the fixed-pitch layout previously ignored:
+  // with 6 menu items (OPDS configured) the 6th tile's position overlapped
+  // the button-hints bar by 18px, clipping its label against the bar's
+  // solid fill (see 938678e6 / 962091a2). Same selection-derived windowing
+  // as drawList, so HomeActivity's plain next/previous navigation pages for
+  // free. usableHeight also reserves kSelectionStroke so a selected last
+  // tile's outer stroke -- which reaches that far past the fill -- stays
+  // inside the rect too. On touch devices getMetrics() zeroes
+  // buttonHintsHeight, growing this rect enough that all six tiles fit one
+  // page, so paging never activates where HomeActivity's unpaged rowTouch
+  // mapping is in play.
+  const int rowStep = AlmanacMetrics::values.menuRowHeight + AlmanacMetrics::values.menuSpacing;
+  const int usableHeight = rect.height - AlmanacMetrics::values.verticalSpacing - kSelectionStroke;
+  // + menuSpacing: the last tile on a page needs no trailing gap.
+  const int pageItems = std::max(1, (usableHeight + AlmanacMetrics::values.menuSpacing) / rowStep);
+  const int pageStart = std::max(0, selectedIndex) / pageItems * pageItems;
+  const int pageEnd = std::min(buttonCount, pageStart + pageItems);
+
+  for (int i = pageStart; i < pageEnd; ++i) {
+    const int tileY = rect.y + AlmanacMetrics::values.verticalSpacing + (i - pageStart) * rowStep;
     const int tileX = rect.x + AlmanacMetrics::values.contentSidePadding;
     const int tileWidth = rect.width - AlmanacMetrics::values.contentSidePadding * 2;
     const int tileHeight = AlmanacMetrics::values.menuRowHeight;
@@ -450,13 +467,11 @@ void AlmanacTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCo
       // tiles aren't packed edge-to-edge inside a shared frame -- each tile
       // has menuSpacing (8px) between it and its neighbours, comfortably
       // more than the stroke's reach (3px), so no clamping against adjacent
-      // tiles is needed here. (This does NOT cover the *last* tile against
-      // the button-hints bar below the menu -- see the report: with 6 menu
-      // items (OPDS enabled) HomeActivity's own tile-position formula
-      // already lands the last tile's unstroked bottom past the
-      // button-hints bar in every theme, pre-existing and out of this
-      // file's scope; the stroke here adds 3px on top of that.) width-1/
-      // height-1 below for the same reason as drawList's frame draw.
+      // tiles is needed here. Against the rect's own bottom edge, the
+      // paging math above already reserved kSelectionStroke, so a selected
+      // last tile's stroke stays inside the rect rather than reaching into
+      // the button-hints bar. width-1/height-1 below for the same reason as
+      // drawList's frame draw.
       renderer.fillRect(tileX, tileY, tileWidth, tileHeight, true);
       renderer.drawRect(tileX - kSelectionStroke, tileY - kSelectionStroke, tileWidth + kSelectionStroke * 2 - 1,
                         tileHeight + kSelectionStroke * 2 - 1, kSelectionStrokeWidth, true);
@@ -471,5 +486,25 @@ void AlmanacTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCo
     const int lineHeight = renderer.getLineHeight(UI_10_FONT_ID);
     const int textY = tileY + (tileHeight - lineHeight) / 2;
     renderer.drawText(UI_10_FONT_ID, textX, textY, label, !selected);
+  }
+
+  // Same gauge-strip paging indicator as drawList's step 4, for the same
+  // reason: without one, page 1 gives no cue that another item exists below
+  // the fold. The track spans the tile column (no kFrameStroke inset --
+  // unlike the list, the menu has no enclosing frame), and its x lane
+  // (scrollBarWidth + scrollBarRightOffset in from the right edge) sits
+  // clear of the tiles, whose own right edge is contentSidePadding (16) in;
+  // even a selected tile's stroke reaches only 2px past that.
+  if (buttonCount > pageItems) {
+    const int barX =
+        rect.x + rect.width - AlmanacMetrics::values.scrollBarWidth - AlmanacMetrics::values.scrollBarRightOffset;
+    const int trackY = rect.y + AlmanacMetrics::values.verticalSpacing;
+    const int trackHeight = pageItems * rowStep - AlmanacMetrics::values.menuSpacing;
+    const int thumbHeight = std::max(10, (trackHeight * pageItems) / buttonCount);
+    const int maxStart = std::max(1, buttonCount - pageItems);
+    const int maxTravel = std::max(1, trackHeight - thumbHeight);
+    const int clampedStart = std::clamp(pageStart, 0, maxStart);
+    const int thumbY = trackY + (clampedStart * maxTravel) / maxStart;
+    renderer.fillRect(barX, thumbY, AlmanacMetrics::values.scrollBarWidth, thumbHeight, true);
   }
 }
