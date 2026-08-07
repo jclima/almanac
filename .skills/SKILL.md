@@ -506,12 +506,37 @@ pio run -t upload
 # Build specific environment
 pio run -e gh_release
 
+# Build for the Seeed Sticky (ESP32-S3 — separate MCU family, separate binary)
+pio run -e sticky -t upload
+
 # Clean build artifacts
 pio run -t clean
 
 # Upload filesystem data (if using SPIFFS/LittleFS)
 pio run -t uploadfs
+
+# Host unit tests — builds and runs the gtest suites in test/ via CMake/CTest.
+# Runs on the host, so no device needed.
+pio run -t unit-tests
+
+# Generate compile_commands.json for clangd / IDE code intelligence.
+# NOTE: `pio run -t compiledb` does NOT produce a usable database in this
+# project — the custom_sdkconfig core rebuild emits its own CMake
+# compile_commands.json that displaces PlatformIO's, leaving zero entries for
+# src/ or lib/. Synthesize it from idedata instead:
+pio run -t idedata -e default > /tmp/idedata.raw
+python3 scripts/gen_compiledb.py /tmp/idedata.raw
 ```
+
+**clangd note**: the generated database is gitignored, so this is a per-clone
+step; re-run it after adding source files or changing `build_flags`. clangd also
+needs an explicit `--target=riscv32-esp-elf` and `-nostdinc` (it otherwise
+assumes the host and fails on section attributes and libc headers) — put those
+in a personal `~/Library/Preferences/clangd/config.yaml` (macOS) or
+`~/.config/clangd/config.yaml` (Linux) rather than the tracked `.clangd`.
+
+**Note**: `pio` may not be on `PATH`. It lives in the PlatformIO virtualenv at
+`~/.platformio/penv/bin/pio` — alias it or use the full path.
 
 **Via VS Code**:
 * Use PlatformIO toolbar: Build (✓), Upload (→), Clean (🗑️)
