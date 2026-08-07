@@ -555,12 +555,13 @@ void AlmanacTheme::drawHomeMenu(GfxRenderer& renderer, const int pageWidth, cons
   // drawButtonHints all read AlmanacMetrics::values directly) -- do not
   // "fix" this back. This tile rect must match the one HomeActivity
   // hit-tests against, and HomeActivity only ever reaches metrics through
-  // getMetrics() (e.g. HomeActivity::menuRect()). getMetrics() zeroes
-  // buttonHintsHeight on touch hardware, because drawButtonHints (above)
-  // early-returns without drawing a bar when gpio.hasTouch(); homeTileRect
-  // derives the Settings tier and grid centring from buttonHintsTop, so
-  // AlmanacMetrics::values here would draw tiles 48px away from where the
-  // touch build's hit-test expects them.
+  // getMetrics() (e.g. HomeActivity::loop()'s hit-test, which binds `metrics`
+  // from getMetrics() and passes it straight to homeTileRect). getMetrics()
+  // zeroes buttonHintsHeight on touch hardware, because drawButtonHints
+  // (above) early-returns without drawing a bar when gpio.hasTouch();
+  // homeTileRect derives the Settings tier and grid centring from
+  // buttonHintsTop, so AlmanacMetrics::values here would draw tiles 48px away
+  // from where the touch build's hit-test expects them.
   const auto& metrics = UITheme::getInstance().getMetrics();
   for (int i = 0; i < composition.tileCount; i++) {
     const Rect tile = MenuLayout::homeTileRect(metrics, pageWidth, pageHeight, composition, i);
@@ -580,7 +581,7 @@ void AlmanacTheme::drawHomeMenu(GfxRenderer& renderer, const int pageWidth, cons
     // STR_MENU_RECENT_BOOKS translation is ~23 characters, which does not fit
     // a 217px tile on one line, and "Recent Bo..." is worse than two lines.
     const std::string label = tileLabel(i);
-    const int inset = AlmanacMetrics::values.contentSidePadding / 2;
+    const int inset = metrics.contentSidePadding / 2;
     UITheme::drawCenteredWrappedText(renderer, Rect{tile.x + inset, tile.y, tile.width - inset * 2, tile.height},
                                      UI_10_FONT_ID, label.c_str(), 2, !selected);
   }

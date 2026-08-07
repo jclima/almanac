@@ -12,8 +12,9 @@
 // menuRowLayout() with fixture geometry inherited from the theme that used it
 // (the retired RoundedRaff).
 //
-// Portrait is the only orientation these need to cover: HomeActivity never
-// changes the renderer orientation, and the only activities that do (the
+// Portrait is the only orientation these need to cover: HomeActivity::onEnter()
+// asserts Portrait itself (MenuLayout::homeTileRect assumes a portrait
+// pageHeight), and the only other activities that change orientation (the
 // readers, via ReaderUtils::applyOrientation) restore Portrait on exit.
 //
 // Known limitation: these model the drawing geometry rather than calling

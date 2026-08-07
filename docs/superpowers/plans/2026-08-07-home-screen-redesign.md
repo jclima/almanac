@@ -438,7 +438,9 @@ Do not commit the `.png` previews unless `src/images/*.png` is already tracked �
   - `void drawHomeMasthead(GfxRenderer& renderer, Rect rect) const;`
   - `void drawHomeMenu(GfxRenderer& renderer, int pageWidth, int pageHeight, MenuLayout::HomeComposition composition, int selectedIndex, const std::function<std::string(int index)>& tileLabel) const;`
 
-`drawButtonMenu` is left untouched — the settings screens still use it. These are additive, which keeps a signature change from rippling into unrelated call sites.
+`drawButtonMenu` is left untouched — not because the settings screens call it (they call `drawList`), but because touching it is out of scope for this task. These are additive, which keeps a signature change from rippling into unrelated call sites.
+
+Post-merge, `drawButtonMenu`, `getButtonMenuLayout` and `BaseTheme::drawRecentBookCover` end up with zero call sites in `src/`: they are virtual, so `--gc-sections` cannot prune them, and they are kept deliberately as a deferred removal rather than because anything still calls them. Follow-up (separate change, not this task): delete that trio together with `MenuRowLayout`, `MenuLayout::menuTop`/`availableHeight`, the cover-related metrics (`homeCoverHeight`, `homeCoverTileHeight`), and the `test/home_menu_layout/` cases that pin all of the above.
 
 - [ ] **Step 1: Declare the new methods**
 

@@ -58,6 +58,14 @@ void HomeActivity::loadRecentBooks(int maxBooks) {
 void HomeActivity::onEnter() {
   Activity::onEnter();
 
+  // MenuLayout::homeTileRect assumes a portrait pageHeight. Readers and the
+  // sleep screen reset orientation to Portrait in their own onExit(), but
+  // nothing enforces it from Home's side -- assert it here rather than trust
+  // every caller upstream to have reset it (a landscape pageHeight would emit
+  // tile rects that overlap and fall off-screen, and GfxRenderer logs once
+  // per out-of-bounds pixel, i.e. a watchdog reboot, not a cosmetic glitch).
+  renderer.setOrientation(GfxRenderer::Orientation::Portrait);
+
   hasOpdsServers = OPDS_STORE.hasServers();
 
   const auto& metrics = UITheme::getInstance().getMetrics();
@@ -189,7 +197,7 @@ void HomeActivity::render(RenderLock&&) {
 
   renderer.clearScreen();
 
-  GUI.drawHomeMasthead(renderer, Rect{0, 0, pageWidth, MenuLayout::kHomeMastheadHeight});
+  GUI.drawHomeMasthead(renderer, MenuLayout::homeMastheadRect(pageWidth));
 
   // Build menu items dynamically
   std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_FILE_TRANSFER),
@@ -211,9 +219,17 @@ void HomeActivity::render(RenderLock&&) {
   // not a substitute for that agreement: AlmanacTheme::drawHomeMenu has no
   // way to enforce it itself, so if tileCount and menuItems ever did drift
   // apart, this turns what would be an out-of-bounds read into an empty label.
-  GUI.drawHomeMenu(renderer, pageWidth, pageHeight, menuComposition(), selectorIndex, [&menuItems](int index) {
-    return index >= 0 && index < static_cast<int>(menuItems.size()) ? std::string(menuItems[index]) : std::string();
-  });
+  GUI.drawHomeMenu(
+      renderer, pageWidth, pageHeight, menuComposition(), selectorIndex, [this, &menuItems](int index) -> std::string {
+        // Identify WHICH book, not just that one exists -- a book with no
+        // <dc:title> in its EPUB metadata leaves RecentBook::title empty
+        // (Epub::getTitle() has no filename fallback, unlike Xtc/Txt), so
+        // fall through to the generic label rather than draw a blank tile.
+        if (index == 0 && hasContinueReadingTile() && !recentBooks[0].title.empty()) {
+          return recentBooks[0].title;
+        }
+        return index >= 0 && index < static_cast<int>(menuItems.size()) ? std::string(menuItems[index]) : std::string();
+      });
 
   const auto labels = mappedInput.mapLabels(recentBooks.empty() ? "" : tr(STR_RESUME), tr(STR_SELECT), tr(STR_DIR_UP),
                                             tr(STR_DIR_DOWN));

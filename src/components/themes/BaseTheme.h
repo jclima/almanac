@@ -215,7 +215,9 @@ class BaseTheme {
   // font-derived row height stays expressible (the retired RoundedRaff theme
   // was that consumer).
   //
-  // Both sides pass HomeActivity::menuRect(), which is why they agree.
+  // Home's hit-test no longer goes through this virtual -- it calls
+  // MenuLayout::homeTileRect directly (see HomeActivity::loop()) -- so this
+  // reporting contract matters only if a future caller re-adopts drawButtonMenu.
   virtual MenuRowLayout getButtonMenuLayout(const GfxRenderer& renderer, Rect rect, int buttonCount,
                                             int selectedIndex) const;
   virtual void drawList(const GfxRenderer& renderer, Rect rect, int itemCount, int selectedIndex,

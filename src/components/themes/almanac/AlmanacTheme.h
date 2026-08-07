@@ -95,8 +95,11 @@ class AlmanacTheme final : public BaseTheme {
 
   // This theme's selected tile draws a stroke OUTSIDE its fill, so the last
   // row needs that much clearance beyond itself. Reserved here rather than in
-  // drawButtonMenu alone so HomeActivity's hit-test, which calls this same
-  // virtual, derives the identical geometry.
+  // drawButtonMenu alone so any caller deriving row geometry from this virtual
+  // gets the identical reach. HomeActivity's hit-test is not such a caller --
+  // it uses MenuLayout::homeTileRect directly (see HomeActivity::loop()) --
+  // but getButtonMenuLayout/drawButtonMenu stay compiled (see drawButtonMenu's
+  // definition) so this override's contract still has to hold.
   MenuRowLayout getButtonMenuLayout(const GfxRenderer& renderer, Rect rect, int buttonCount,
                                     int selectedIndex) const override;
 
@@ -124,6 +127,9 @@ class AlmanacTheme final : public BaseTheme {
 
   // Home's tiered tile menu. Takes the composition rather than deriving it,
   // because only HomeActivity knows whether a recent book exists.
+  // pageWidth/pageHeight must be renderer.getScreenWidth()/getScreenHeight():
+  // this method fetches metrics internally, so a caller passing other
+  // dimensions would silently drift from HomeActivity's hit-test.
   void drawHomeMenu(GfxRenderer& renderer, int pageWidth, int pageHeight, MenuLayout::HomeComposition composition,
                     int selectedIndex, const std::function<std::string(int index)>& tileLabel) const;
 };

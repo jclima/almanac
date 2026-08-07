@@ -138,6 +138,11 @@ constexpr int homeGridTop(const ThemeMetrics& metrics, const int pageHeight, con
   return regionTop + (slack > 0 ? slack / 2 : 0);
 }
 
+// Rect for the masthead tier. Kept alongside homeTileRect (which bakes the
+// same kHomeMastheadHeight constant into every tile's origin) so the caller
+// does not hold its own second copy of that geometry.
+constexpr Rect homeMastheadRect(const int pageWidth) { return Rect{0, 0, pageWidth, kHomeMastheadHeight}; }
+
 // Rect for one tile. Queried by AlmanacTheme to draw and by HomeActivity to
 // hit-test, which is what keeps drawn tiles and touch targets from drifting.
 constexpr Rect homeTileRect(const ThemeMetrics& metrics, const int pageWidth, const int pageHeight,
