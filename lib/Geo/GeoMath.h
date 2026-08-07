@@ -40,8 +40,7 @@ struct ScreenPoint {
 // Distances at or beyond maxRangeMiles clamp to the outer ring instead of
 // escaping the plot. A maxRangeMiles of 0 collapses everything to the centre
 // rather than dividing by zero.
-ScreenPoint polarToScreen(double distanceMiles, double bearingDeg, double maxRangeMiles, int cx, int cy,
-                          int radiusPx);
+ScreenPoint polarToScreen(double distanceMiles, double bearingDeg, double maxRangeMiles, int cx, int cy, int radiusPx);
 
 // Fills xs[4]/ys[4] with an arrow-like quadrilateral centred on (cx,cy),
 // rotated so its nose points along headingDeg (0 = up/north, clockwise).

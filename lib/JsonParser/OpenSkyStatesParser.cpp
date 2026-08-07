@@ -86,8 +86,7 @@ void OpenSkyStatesParser::commitRow() {
       m.speedMph = m.hasSpeedMph ? static_cast<int32_t>(lroundf(scratch.velocityMs * MPS_TO_MPH)) : 0;
 
       m.hasHeading = scratch.hasTrueTrack;
-      m.headingDeg =
-          m.hasHeading ? ((static_cast<int32_t>(lroundf(scratch.trueTrackDeg)) % 360 + 360) % 360) : 0;
+      m.headingDeg = m.hasHeading ? ((static_cast<int32_t>(lroundf(scratch.trueTrackDeg)) % 360 + 360) % 360) : 0;
 
       m.hasVerticalRate = scratch.hasVerticalRate;
       m.verticalRateMs = scratch.verticalRateMs;

@@ -99,7 +99,7 @@ void NearbyFlightsActivity::launchWifiSelection() {
   state = FlightsState::WIFI_SELECTION;
   requestUpdate();
   startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
-                          [this](const ActivityResult& result) { onWifiSelectionComplete(!result.isCancelled); });
+                         [this](const ActivityResult& result) { onWifiSelectionComplete(!result.isCancelled); });
 }
 
 void NearbyFlightsActivity::onWifiSelectionComplete(const bool connected) {
@@ -736,7 +736,7 @@ void NearbyFlightsActivity::renderDetail() const {
   if (included[kVerticalRate]) {
     const char* rateLabel = m.verticalRateMs > 0.5f    ? tr(STR_FLIGHT_CLIMBING)
                             : m.verticalRateMs < -0.5f ? tr(STR_FLIGHT_DESCENDING)
-                                                        : tr(STR_FLIGHT_LEVEL);
+                                                       : tr(STR_FLIGHT_LEVEL);
     renderer.drawText(UI_10_FONT_ID, x, y, rateLabel, true);
     y += metrics.listRowHeight;
   }

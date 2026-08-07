@@ -56,8 +56,8 @@ constexpr int kMenuTileStroke = 2;
 // AlmanacMetrics::values.batteryWidth/batteryHeight -- the same icon
 // footprint BaseTheme's pictogram uses -- so it reads as the same battery
 // icon, just recoloured for this bar.
-void drawBatteryPictogramWhite(const GfxRenderer& renderer, const int x, const int y, const int width,
-                               const int height, const int percentage) {
+void drawBatteryPictogramWhite(const GfxRenderer& renderer, const int x, const int y, const int width, const int height,
+                               const int percentage) {
   // Casing: top/bottom walls, left wall, right end-cap plus a small terminal
   // nub -- same geometry as BaseTheme::drawBatteryOutline.
   renderer.drawLine(x + 1, y, x + width - 3, y, false);
