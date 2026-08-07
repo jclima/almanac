@@ -83,6 +83,61 @@ void drawBatteryPictogramWhite(const GfxRenderer& renderer, const int x, const i
     renderer.fillRect(x + 2, y + 2, filledWidth, fillHeight, false);
   }
 }
+
+// Draws this bar's white-ink battery indicator -- percentage text, or the
+// pictogram above when hideBatteryPercentage == HIDE_ALWAYS -- right-aligned
+// to `rightEdge` at `textY` (a SMALL_FONT_ID baseline), plus a charging bolt
+// to its left whenever gpio.isUsbConnected(). Shared by drawHeader and
+// drawHomeMasthead: both draw a solid black bar and need the same white-ink
+// representation for the same reason (BaseTheme::drawBatteryRight's casing
+// helper is hardcoded to black ink -- see drawBatteryPictogramWhite's
+// comment above) and the same charging cue. The bolt uses
+// BaseTheme::drawBatteryLightningBolt as-is (qualified, since this is a free
+// function, not a theme method): it already plots with state=false --
+// "white on black", exactly this bar's convention -- so it needs no
+// recolouring, unlike the pictogram. Drawn whenever charging, independent of
+// showPercentage, matching BaseTheme::drawHeader's drawBatteryRight ->
+// fillBatteryIcon call, which is also unconditional on it.
+// Returns the total width consumed (bolt + gap + text/icon) so a caller with
+// more content to its left (drawHeader's title/subtitle) knows how much
+// space remains.
+int drawWhiteBatteryBlock(const GfxRenderer& renderer, const int rightEdge, const int textY,
+                          const bool showPercentage) {
+  constexpr int kBoltWidth = 6;
+  constexpr int kBoltHeight = 8;
+  constexpr int kBoltTextGap = 4;
+
+  const bool charging = gpio.isUsbConnected();
+  std::string batteryText;
+  if (showPercentage) {
+    batteryText = std::to_string(powerManager.getBatteryPercentage()) + "%";
+  }
+
+  // textWidth > 0 iff showPercentage; iconWidth (the HIDE_ALWAYS pictogram
+  // fallback) is therefore the exact complement, so the two are never both
+  // nonzero.
+  const int textWidth = batteryText.empty() ? 0 : renderer.getTextWidth(SMALL_FONT_ID, batteryText.c_str());
+  const int iconWidth = showPercentage ? 0 : AlmanacMetrics::values.batteryWidth;
+  const int rightElementWidth = textWidth + iconWidth;
+  const int innerGap = (charging && rightElementWidth > 0) ? kBoltTextGap : 0;
+
+  if (textWidth > 0) {
+    renderer.drawText(SMALL_FONT_ID, rightEdge - textWidth, textY, batteryText.c_str(), false);
+  } else if (iconWidth > 0) {
+    const int iconHeight = AlmanacMetrics::values.batteryHeight;
+    const int iconX = rightEdge - iconWidth;
+    const int iconY = textY + (renderer.getLineHeight(SMALL_FONT_ID) - iconHeight) / 2;
+    drawBatteryPictogramWhite(renderer, iconX, iconY, iconWidth, iconHeight, powerManager.getBatteryPercentage());
+  }
+  if (charging) {
+    const int boltX = rightEdge - rightElementWidth - innerGap - kBoltWidth;
+    const int boltY = textY + (renderer.getLineHeight(SMALL_FONT_ID) - kBoltHeight) / 2;
+    BaseTheme::drawBatteryLightningBolt(renderer, boltX, boltY);
+  }
+
+  const int boltWidth = charging ? kBoltWidth : 0;
+  return rightElementWidth + innerGap + boltWidth;
+}
 }  // namespace
 
 int AlmanacTheme::getListRowStep(const bool hasSubtitle) const {
@@ -124,66 +179,14 @@ void AlmanacTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char
   // black lines (see BaseTheme.cpp) -- invisible against this bar's black
   // fill, and still serving the black-on-white contexts AlmanacTheme
   // inherits (the reader status bar draws through it), so recoloring it is
-  // not an option. Show the percentage as white text instead of the
-  // pictogram when hideBatteryPercentage allows it: reads more like an
-  // instrument-panel readout than the icon would have. Under HIDE_ALWAYS
-  // there is no percentage to fall back on, so this draws
-  // drawBatteryPictogramWhite (a separate minimal white-ink pictogram,
-  // defined above) instead -- omitting it would make HIDE_ALWAYS mean "no
-  // battery indicator at all" in this header, unlike BaseTheme::drawHeader,
-  // which always draws its pictogram via drawBatteryRight and only gates the
-  // percentage *text* (see BaseTheme.cpp's drawBatteryRight -> fillBatteryIcon
-  // call, which runs unconditionally).
+  // not an option. drawWhiteBatteryBlock (defined above, shared with
+  // drawHomeMasthead) draws the white-ink replacement -- percentage text
+  // when hideBatteryPercentage allows it, else drawBatteryPictogramWhite --
+  // plus the charging bolt, unconditionally on showPercentage, matching
+  // BaseTheme::drawHeader's own drawBatteryRight -> fillBatteryIcon call.
   const bool showPercentage = SETTINGS.hideBatteryPercentage != AlmanacSettings::HIDE_BATTERY_PERCENTAGE::HIDE_ALWAYS;
-  std::string batteryText;
-  if (showPercentage) {
-    batteryText = std::to_string(powerManager.getBatteryPercentage()) + "%";
-  }
-
-  // Charging cue: BaseTheme's own header draws fillBatteryIcon's lightning
-  // bolt whenever gpio.isUsbConnected(), and does so unconditionally on
-  // hideBatteryPercentage (see BaseTheme.cpp's drawBatteryRight ->
-  // fillBatteryIcon call, which always runs; only the percentage *text* is
-  // gated there). The pictogram itself is gone for the
-  // same drawBatteryOutline reason as above, but drawBatteryLightningBolt is
-  // a separate, static, colour-parameterless-but-already-white helper
-  // (it plots with state=false -- "white/inverted on black fill for
-  // visibility", per its own comment -- exactly this bar's convention) that
-  // AlmanacTheme inherits, so it's reused directly rather than reinvented.
-  // It must render even when showPercentage is false, so the whole block
-  // below is unconditional rather than gated on showPercentage.
-  const bool charging = gpio.isUsbConnected();
   int rightEdge = rect.x + rect.width - sidePadding;
-  {
-    constexpr int kBoltWidth = 6;
-    constexpr int kBoltHeight = 8;
-    constexpr int kBoltTextGap = 4;
-
-    // batteryText is populated iff showPercentage, so textWidth > 0 iff
-    // showPercentage; iconWidth (the HIDE_ALWAYS pictogram fallback) is
-    // therefore the exact complement and the two are never both nonzero.
-    const int textWidth = batteryText.empty() ? 0 : renderer.getTextWidth(SMALL_FONT_ID, batteryText.c_str());
-    const int iconWidth = showPercentage ? 0 : AlmanacMetrics::values.batteryWidth;
-    const int rightElementWidth = textWidth + iconWidth;
-    const int innerGap = (charging && rightElementWidth > 0) ? kBoltTextGap : 0;
-
-    if (textWidth > 0) {
-      renderer.drawText(SMALL_FONT_ID, rightEdge - textWidth, smallTextY, batteryText.c_str(), false);
-    } else if (iconWidth > 0) {
-      const int iconHeight = AlmanacMetrics::values.batteryHeight;
-      const int iconX = rightEdge - iconWidth;
-      const int iconY = smallTextY + (renderer.getLineHeight(SMALL_FONT_ID) - iconHeight) / 2;
-      drawBatteryPictogramWhite(renderer, iconX, iconY, iconWidth, iconHeight, powerManager.getBatteryPercentage());
-    }
-    if (charging) {
-      const int boltX = rightEdge - rightElementWidth - innerGap - kBoltWidth;
-      const int boltY = smallTextY + (renderer.getLineHeight(SMALL_FONT_ID) - kBoltHeight) / 2;
-      drawBatteryLightningBolt(renderer, boltX, boltY);
-    }
-
-    const int boltWidth = charging ? kBoltWidth : 0;
-    rightEdge -= rightElementWidth + innerGap + boltWidth + sidePadding;
-  }
+  rightEdge -= drawWhiteBatteryBlock(renderer, rightEdge, smallTextY, showPercentage) + sidePadding;
 
   // Title (left) and subtitle (right, e.g. Settings' version string or the
   // flight tracker's transient error message) share whatever space remains
@@ -535,30 +538,32 @@ void AlmanacTheme::drawHomeMasthead(GfxRenderer& renderer, const Rect rect) cons
   const int wordmarkY = rect.y + (rect.height - renderer.getLineHeight(UI_12_FONT_ID)) / 2;
   renderer.drawText(UI_12_FONT_ID, wordmarkX, wordmarkY, tr(STR_APP_NAME), false, EpdFontFamily::BOLD);
 
-  // Battery, right-aligned, white on the bar. BaseTheme::drawBatteryRight
-  // cannot be reused here for the same reason drawHeader avoids it: its
-  // casing helper is hardcoded to black ink. See drawBatteryPictogramWhite.
+  // Battery + charging cue, right-aligned, white on the bar -- see
+  // drawWhiteBatteryBlock above (shared with drawHeader) for why
+  // BaseTheme::drawBatteryRight can't be reused here.
   const bool showPercentage = SETTINGS.hideBatteryPercentage != AlmanacSettings::HIDE_BATTERY_PERCENTAGE::HIDE_ALWAYS;
   const int smallTextY = rect.y + (rect.height - renderer.getLineHeight(SMALL_FONT_ID)) / 2;
   const int rightEdge = rect.x + rect.width - sidePadding;
-  if (showPercentage) {
-    const std::string batteryText = std::to_string(powerManager.getBatteryPercentage()) + "%";
-    const int textWidth = renderer.getTextWidth(SMALL_FONT_ID, batteryText.c_str());
-    renderer.drawText(SMALL_FONT_ID, rightEdge - textWidth, smallTextY, batteryText.c_str(), false);
-  } else {
-    const int iconWidth = AlmanacMetrics::values.batteryWidth;
-    const int iconHeight = AlmanacMetrics::values.batteryHeight;
-    drawBatteryPictogramWhite(renderer, rightEdge - iconWidth,
-                              smallTextY + (renderer.getLineHeight(SMALL_FONT_ID) - iconHeight) / 2, iconWidth,
-                              iconHeight, powerManager.getBatteryPercentage());
-  }
+  drawWhiteBatteryBlock(renderer, rightEdge, smallTextY, showPercentage);
 }
 
 void AlmanacTheme::drawHomeMenu(GfxRenderer& renderer, const int pageWidth, const int pageHeight,
                                 const MenuLayout::HomeComposition composition, const int selectedIndex,
                                 const std::function<std::string(int index)>& tileLabel) const {
+  // Deliberately UITheme::getMetrics(), NOT AlmanacMetrics::values like every
+  // other call site in this file (getButtonMenuLayout, drawHeader,
+  // drawButtonHints all read AlmanacMetrics::values directly) -- do not
+  // "fix" this back. This tile rect must match the one HomeActivity
+  // hit-tests against, and HomeActivity only ever reaches metrics through
+  // getMetrics() (e.g. HomeActivity::menuRect()). getMetrics() zeroes
+  // buttonHintsHeight on touch hardware, because drawButtonHints (above)
+  // early-returns without drawing a bar when gpio.hasTouch(); homeTileRect
+  // derives the Settings tier and grid centring from buttonHintsTop, so
+  // AlmanacMetrics::values here would draw tiles 48px away from where the
+  // touch build's hit-test expects them.
+  const auto& metrics = UITheme::getInstance().getMetrics();
   for (int i = 0; i < composition.tileCount; i++) {
-    const Rect tile = MenuLayout::homeTileRect(AlmanacMetrics::values, pageWidth, pageHeight, composition, i);
+    const Rect tile = MenuLayout::homeTileRect(metrics, pageWidth, pageHeight, composition, i);
     const bool selected = i == selectedIndex;
 
     if (selected) {

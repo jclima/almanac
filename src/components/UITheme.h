@@ -14,7 +14,14 @@ class UITheme {
   static UITheme& getInstance() { return instance; }
 
   const ThemeMetrics& getMetrics() const;
-  const BaseTheme& getTheme() const { return currentTheme; }
+  // Returns AlmanacTheme, not BaseTheme: currentTheme is concretely
+  // AlmanacTheme (see below), and Almanac is a hard fork with exactly one
+  // theme -- no other theme will ever implement drawHomeMasthead/
+  // drawHomeMenu, so those stay AlmanacTheme-only methods rather than
+  // BaseTheme virtuals. Every existing GUI.foo()/getTheme().foo() call site
+  // calls a BaseTheme method, which AlmanacTheme still has (inherited or
+  // overridden), so this is source-compatible with all of them.
+  const AlmanacTheme& getTheme() const { return currentTheme; }
   Rect getScreenSafeArea(const GfxRenderer& renderer, bool hasFrontButtonHints = false,
                          bool hasSideButtonHints = false);
   static void drawCenteredText(const GfxRenderer& renderer, Rect screen, int fontId, int y, const char* text,
