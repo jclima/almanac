@@ -95,6 +95,12 @@ Not yet verified on device: the theme across all screens in both orientations,
 the flight tracker end to end, and reading progress surviving an upgrade. This
 is one person's firmware on one device — treat it accordingly.
 
+## Using it
+
+[**USER_GUIDE.md**](USER_GUIDE.md) is the guide for the device itself — button
+layout, every screen, reading controls, WiFi transfer, Calibre, OPDS, KOReader
+sync and the settings reference. Start there once it is flashed.
+
 ## Install
 
 Almanac publishes no binaries yet — build and flash it yourself (below).
@@ -181,6 +187,11 @@ book's progress and bookmarks.
 See [docs/](docs/) for the file formats, activity manager, i18n and webserver
 documentation, and [CLAUDE.md](CLAUDE.md) for the engineering constraints any
 change has to respect.
+
+[SCOPE.md](SCOPE.md) is the one to read before proposing a feature: it records
+what this fork deliberately will and will not do, and the test a new feature has
+to pass. Almanac is a personal build with a narrow remit, and that document is
+why some obvious-looking additions are declined.
 
 ## Licence
 
