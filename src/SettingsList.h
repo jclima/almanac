@@ -324,6 +324,8 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
                             sizeof(SETTINGS.flightTrackerHomeLat), "flightTrackerHomeLat"),
         SettingInfo::String(StrId::STR_FLIGHT_TRACKER_HOME_LON, &SETTINGS.flightTrackerHomeLon[0],
                             sizeof(SETTINGS.flightTrackerHomeLon), "flightTrackerHomeLon"),
+        SettingInfo::String(StrId::STR_FLIGHT_TRACKER_HOME_ZIP, &SETTINGS.flightTrackerHomeZip[0],
+                            sizeof(SETTINGS.flightTrackerHomeZip), "flightTrackerHomeZip"),
         SettingInfo::Value(StrId::STR_FLIGHT_TRACKER_RADIUS, &AlmanacSettings::flightTrackerRadiusMiles,
                            {AlmanacSettings::FLIGHT_TRACKER_RADIUS_MIN, AlmanacSettings::FLIGHT_TRACKER_RADIUS_MAX,
                             AlmanacSettings::FLIGHT_TRACKER_RADIUS_STEP},
