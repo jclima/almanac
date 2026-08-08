@@ -116,3 +116,46 @@ TEST(ZipGeocodeParserTest, ResetClearsPreviousResult) {
   EXPECT_DOUBLE_EQ(p.geocode().latitude, 0);
   EXPECT_STREQ(p.geocode().placeName, "");
 }
+
+TEST(ZipGeocodeParserTest, SecondPlaceEntryIgnored) {
+  ZipGeocodeParser p;
+  // A second places[] entry exercises the sawFirstPlace-already-true branch
+  // of sOnObjectStart's IN_PLACES case (and its matching decrement in
+  // sOnObjectEnd) -- it must be skipped, with the array still closing
+  // cleanly, and must not clobber the data already captured from places[0].
+  constexpr char json[] = R"({"places": [{"latitude": "34.0901", "longitude": "-118.4065"}, )"
+                          R"({"latitude": "40.0", "longitude": "-70.0"}]})";
+  feedAll(p, json);
+  ASSERT_FALSE(p.hasError());
+  const auto& r = p.geocode();
+  EXPECT_TRUE(r.found);
+  EXPECT_DOUBLE_EQ(r.latitude, 34.0901);
+  EXPECT_DOUBLE_EQ(r.longitude, -118.4065);
+}
+
+TEST(ZipGeocodeParserTest, NestedContainerInsidePlaceDoesNotCorruptParsing) {
+  ZipGeocodeParser p;
+  // A nested object inside places[0] exercises the IN_PLACE case's depth++
+  // path. The nested string value ("bar") must not be mistaken for one of
+  // the tracked fields, and the surrounding lat/lon must still come through
+  // correctly once the nested container closes and depth returns to 0.
+  constexpr char json[] =
+      R"({"places": [{"latitude": "34.0901", "longitude": "-118.4065", "nested": {"foo": "bar"}}]})";
+  feedAll(p, json);
+  ASSERT_FALSE(p.hasError());
+  const auto& r = p.geocode();
+  EXPECT_TRUE(r.found);
+  EXPECT_DOUBLE_EQ(r.latitude, 34.0901);
+  EXPECT_DOUBLE_EQ(r.longitude, -118.4065);
+}
+
+TEST(ZipGeocodeParserTest, NonNumericCoordinateNotFound) {
+  ZipGeocodeParser p;
+  // A non-numeric latitude means strtod() can't fully consume the value;
+  // sawLatitude must stay false rather than silently accepting strtod()'s
+  // 0.0 fallback as a real coordinate.
+  constexpr char json[] = R"({"places": [{"latitude": "abc", "longitude": "2.0"}]})";
+  feedAll(p, json);
+  ASSERT_FALSE(p.hasError());
+  EXPECT_FALSE(p.geocode().found);
+}

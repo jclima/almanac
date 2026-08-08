@@ -246,7 +246,16 @@ void FlightTrackerSettingsActivity::onWifiSelectionComplete(const bool connected
 void FlightTrackerSettingsActivity::performZipLookup() {
   zipLookupState = ZipLookupState::LOADING;
   wifiUsedThisSession = true;
-  requestUpdate();
+  // Immediate, not deferred: performZipLookup() is called from a result
+  // handler (KeyboardEntryActivity's or WifiSelectionActivity's) whose
+  // return already released RenderLock and reassigned currentActivity back
+  // to this activity -- but this function itself doesn't return until the
+  // blocking ZipGeocodeClient::geocode() call below completes. A deferred
+  // requestUpdate() would only notify the render task after that blocking
+  // call returns, so the "Looking up 90210..." subtitle would never
+  // actually paint before the network round trip. See
+  // NearbyFlightsActivity::fetchFlights() for the identical situation.
+  requestUpdate(true);
 
   zipParser.reset();
   const ZipGeocodeClient::Result result = ZipGeocodeClient::geocode(pendingZip, zipParser);
@@ -272,7 +281,22 @@ void FlightTrackerSettingsActivity::performZipLookup() {
       errorMessage = tr(STR_ZIP_NOT_FOUND);
       break;
     case ZipGeocodeClient::Result::Error:
-      LOG_ERR("FTS", "Zip lookup transport/parse failure for %s", pendingZip);
+      // zipParser is only ever fed bytes while the HTTP body is streaming on
+      // a 200 response (ZipGeocodeClient::geocode() leaves it untouched on a
+      // non-200/DNS/TLS/connect failure, and a truncated-but-valid body never
+      // sets hasError() -- see ZipGeocodeParserTest.TruncatedBodyNeverPresentsAsFound).
+      // A malformed-JSON byte mid-stream makes the write callback in
+      // HttpDownloader.cpp return false, which aborts the transfer and
+      // surfaces here as Result::Error rather than Result::Ok -- so
+      // hasError() is exactly the signal that tells transport and parse
+      // failures apart at this call site, matching
+      // NearbyFlightsActivity::fetchFlights()'s two-separate-checks
+      // convention.
+      if (zipParser.hasError()) {
+        LOG_ERR("FTS", "Zip lookup parse failure for %s (malformed JSON mid-stream)", pendingZip);
+      } else {
+        LOG_ERR("FTS", "Zip lookup transport failure for %s", pendingZip);
+      }
       errorMessage = tr(STR_ZIP_LOOKUP_ERROR);
       break;
   }

@@ -162,15 +162,28 @@ void ZipGeocodeParser::sOnString(void* ctx, const char* value, size_t len) {
       case LastKey::LONGITUDE: {
         char buf[24];
         safeCopy(buf, sizeof(buf), value, len);
-        self->result.longitude = strtod(buf, nullptr);
-        self->sawLongitude = true;
+        char* end = nullptr;
+        const double parsed = strtod(buf, &end);
+        // Only accept a parse that consumed at least one character and read
+        // all the way to the terminator -- otherwise strtod() would silently
+        // hand back 0.0 for a non-numeric value (e.g. an unexpected API
+        // response), and that 0.0 would still get treated as a real
+        // longitude below.
+        if (end != buf && *end == '\0') {
+          self->result.longitude = parsed;
+          self->sawLongitude = true;
+        }
         break;
       }
       case LastKey::LATITUDE: {
         char buf[24];
         safeCopy(buf, sizeof(buf), value, len);
-        self->result.latitude = strtod(buf, nullptr);
-        self->sawLatitude = true;
+        char* end = nullptr;
+        const double parsed = strtod(buf, &end);
+        if (end != buf && *end == '\0') {
+          self->result.latitude = parsed;
+          self->sawLatitude = true;
+        }
         break;
       }
       case LastKey::STATE_ABBREV:
