@@ -40,6 +40,10 @@ API, then shows them three ways:
   country, and an on-demand aircraft-type and registration lookup via
   [adsbdb](https://www.adsbdb.com).
 
+The home location is set in Flight Tracker settings, either by typing a 5-digit
+US zip code — geocoded once via [Zippopotam.us](https://api.zippopotam.us)'s
+free keyless API — or by entering latitude and longitude directly.
+
 Fetches are **user-initiated only** — there is no background polling — and
 memory use is bounded regardless of how busy the airspace is, capped at the 20
 closest aircraft. Both matter on a device with ~380 KB of RAM and a battery.
@@ -84,8 +88,14 @@ stored choice is ignored and dropped on the next settings save.
 
 ## Status
 
-**Version 1.0.0** — Almanac's own numbering, restarted at 1.0.0 rather than
+**Version 1.0.1** — Almanac's own numbering, restarted at 1.0.0 rather than
 continuing CrossPoint's. Built and flashed on real X4 hardware.
+
+1.0.1 fixes the OTA update check. It parsed a release's raw `tag_name`
+(`almanac-v1.0.0`) as if it were a bare semantic version; the parse failed and
+the comparison then ran on uninitialized values, so the answer was
+indeterminate. **Don't rely on 1.0.0's update check — flash 1.0.1 over USB
+once.** OTA is trustworthy from 1.0.1 on.
 
 Verified by CI on every change: the `default` and `sticky` build environments
 (the two target MCU families — see [Build environments](#build-environments));
@@ -110,15 +120,31 @@ sync and the settings reference. Start there once it is flashed.
 
 ## Install
 
-Almanac publishes no binaries yet — build and flash it yourself (below).
+Prebuilt binaries are on the
+[releases page](https://github.com/jclima/almanac/releases). Each release
+carries the `gh_release` build for the X4/X3: `firmware.bin`, plus
+`bootloader.bin` and `partitions.bin` for a from-scratch flash, and
+`firmware.elf`/`firmware.map` for symbolicating crash traces.
+
+To update an existing Almanac install, flash `firmware.bin` at offset
+`0x10000`. For a device coming from stock or CrossPoint, flash all three
+binaries with `esptool.py`:
+
+```bash
+esptool.py --chip esp32c3 write_flash 0x0 bootloader.bin 0x8000 partitions.bin 0x10000 firmware.bin
+```
+
+There is no `sticky` binary in the releases — the Seeed Sticky is a different
+MCU family and has to be built from source (below).
 
 To go back to CrossPoint or to Xteink's official firmware, use the flash tools
 at <https://crosspointreader.com/#flash-tools>.
 
 > **Note on OTA:** the in-firmware update check points at *this* repository's
-> releases. It must never point at CrossPoint's — the version check is a string
-> comparison, so every upstream release would read as an available update and
-> installing it would flash CrossPoint over Almanac.
+> releases. It must never point at CrossPoint's — it parses the release's
+> `tag_name` as a semantic version and offers anything numerically higher, so
+> every upstream release would read as an available update and installing it
+> would flash CrossPoint over Almanac.
 
 ## Development quick start
 
@@ -180,6 +206,20 @@ python3 scripts/generate_logo.py --preview
 | `gh_release_rc` | Release candidate |
 | `slim` | No serial logging |
 | `sticky` | Seeed Sticky (ESP32-S3, 800×480) — different MCU family |
+| `simulator` | Desktop build (macOS + SDL2), no device — `pio run -e simulator -t run_simulator` |
+
+### Cutting a release
+
+Tags are `almanac-v<version>` — the bare numbers `0.4.0` through `1.5.0` are
+already taken by CrossPoint's inherited tags. Pushing one to `fork` builds
+`gh_release` and publishes the GitHub Release with all five binaries attached.
+
+1. Bump `version` under `[almanac]` in `platformio.ini`. The workflow fails the
+   build if the tag and that value disagree.
+2. Write `docs/release-notes/almanac-v<version>.md`. The workflow uses it as
+   the release body; without it the release still publishes, with GitHub's
+   generated commit summary instead.
+3. `git tag almanac-v<version> && git push fork almanac-v<version>`.
 
 ## Internals
 
