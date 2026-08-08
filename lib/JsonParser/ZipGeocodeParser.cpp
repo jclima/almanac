@@ -18,7 +18,7 @@ bool keyIs(const char* key, size_t len, const char* literal) {
 
 ZipGeocodeParser::ZipGeocodeParser()
     : parser(JsonCallbacks{this, sOnKey, sOnString, sOnNumber, sOnBool, sOnNull, sOnObjectStart, sOnObjectEnd,
-                            sOnArrayStart, sOnArrayEnd}) {}
+                           sOnArrayStart, sOnArrayEnd}) {}
 
 void ZipGeocodeParser::reset() {
   parser.reset();

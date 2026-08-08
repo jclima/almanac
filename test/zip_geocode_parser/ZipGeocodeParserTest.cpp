@@ -1,10 +1,10 @@
-#include "ZipGeocodeParser.h"
-
 #include <gtest/gtest.h>
 
 #include <algorithm>
 #include <cstring>
 #include <string>
+
+#include "ZipGeocodeParser.h"
 
 namespace {
 // Captured verbatim via `curl https://api.zippopotam.us/us/90210` on 2026-08-07.
@@ -84,8 +84,7 @@ TEST(ZipGeocodeParserTest, TruncatedBodyNeverPresentsAsFound) {
 TEST(ZipGeocodeParserTest, OverlongValueTruncatesWithoutOverrun) {
   ZipGeocodeParser p;
   const std::string longName(100, 'A');
-  const std::string json =
-      R"({"places": [{"place name": ")" + longName + R"(", "latitude": "1", "longitude": "2"}]})";
+  const std::string json = R"({"places": [{"place name": ")" + longName + R"(", "latitude": "1", "longitude": "2"}]})";
   feedAll(p, json.c_str());
   ASSERT_FALSE(p.hasError());
   const auto& r = p.geocode();
