@@ -40,7 +40,7 @@ class UITheme {
 
  private:
   AlmanacTheme currentTheme;
-  mutable ThemeMetrics adjustedMetrics;
+  mutable ThemeMetrics adjustedMetrics{};
   mutable bool metricsValid = false;
   mutable bool metricsForTouch = false;
 };
