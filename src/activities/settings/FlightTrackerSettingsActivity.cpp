@@ -223,6 +223,7 @@ void FlightTrackerSettingsActivity::checkAndConnectWifi() {
 
 void FlightTrackerSettingsActivity::launchWifiSelection() {
   zipLookupState = ZipLookupState::WIFI_SELECTION;
+  wifiUsedThisSession = true;
   requestUpdate();
   startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
                          [this](const ActivityResult& result) { onWifiSelectionComplete(!result.isCancelled); });
