@@ -58,10 +58,12 @@ void FlightTrackerSettingsActivity::onExit() {
   // knows how to land on Home or the reader -- rebooting there on every exit
   // would strand a user who only edited Lat/Lon/Radius by hand, bouncing
   // them out of the settings hierarchy they were navigating. So the teardown
-  // is gated on wifiUsedThisSession (set only inside performZipLookup(), the
-  // one place this screen actually makes an HTTP/TLS request) rather than on
-  // raw WiFi state -- matching SilentRestart.h's stated purpose (clearing
-  // fragmentation from a WiFi *session*, not merely "WiFi is on"). A zip
+  // is gated on wifiUsedThisSession (set in launchWifiSelection(), when this
+  // screen brings the radio up to connect, and in performZipLookup(), the
+  // already-connected fast path that skips straight to a fetch -- see the
+  // member comment in the header) rather than on raw WiFi state -- matching
+  // SilentRestart.h's stated purpose (clearing fragmentation from a WiFi
+  // *session*, not merely "WiFi is on"). A zip
   // lookup still lands the user on Home rather than back in Settings; that
   // residual is a real tradeoff, not a bug, given the destinations
   // silentRestart() offers.

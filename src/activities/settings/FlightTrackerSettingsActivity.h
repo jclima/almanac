@@ -36,9 +36,13 @@ class FlightTrackerSettingsActivity final : public Activity {
   ZipLookupState zipLookupState = ZipLookupState::IDLE;
   char pendingZip[6] = {0};  // zip currently being looked up, set on commit
   ZipGeocodeParser zipParser;
-  // Set true only inside performZipLookup(), i.e. only once this screen has
-  // actually made an HTTP/TLS request. Gates onExit()'s teardown -- see its
-  // comment for why WiFi.getMode() alone is the wrong condition here.
+  // Set true wherever this screen actually engages Wi-Fi for its own
+  // purposes -- launchWifiSelection() (bringing the radio up to connect)
+  // and performZipLookup() (the already-connected fast path that skips
+  // straight to a fetch) -- so onExit() only tears down a session this
+  // screen is responsible for, whether or not the connect attempt
+  // succeeded. Gates onExit()'s teardown -- see its comment for why
+  // WiFi.getMode() alone is the wrong condition here.
   bool wifiUsedThisSession = false;
 
   void handleSelection();
