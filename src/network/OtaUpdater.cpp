@@ -7,6 +7,7 @@
 #include "HttpDownloader.h"
 #include <Logging.h>
 #include <ReleaseJsonParser.h>
+#include <SemVer.h>
 #include <esp_ota_ops.h>
 #include <esp_wifi.h>
 // clang-format on
@@ -15,10 +16,10 @@
 
 namespace {
 // Almanac's own releases. This MUST NOT point at upstream crosspoint-reader:
-// the version comparison below is a plain string inequality against
-// ALMANAC_VERSION, so an upstream release would always read as "an update is
-// available" and installing it would flash CrossPoint over Almanac.
-// Keep in step with the repository name if it is ever renamed.
+// the check below only compares version numbers, and upstream's are already
+// ahead of Almanac's (its tags run to 1.5.0), so every upstream release would
+// read as "an update is available" and installing it would flash CrossPoint
+// over Almanac. Keep in step with the repository name if it is ever renamed.
 constexpr char latestReleaseUrl[] = "https://api.github.com/repos/jclima/almanac/releases/latest";
 }  // namespace
 
@@ -65,46 +66,15 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
 }
 
 bool OtaUpdater::isUpdateNewer() const {
-  if (!updateAvailable || latestVersion.empty() || latestVersion == ALMANAC_VERSION) {
+  if (!updateAvailable || latestVersion.empty()) {
     return false;
   }
 
-  int currentMajor, currentMinor, currentPatch;
-  int latestMajor, latestMinor, latestPatch;
-
-  const auto currentVersion = ALMANAC_VERSION;
-
-  // semantic version check (only match on 3 segments)
-  sscanf(latestVersion.c_str(), "%d.%d.%d", &latestMajor, &latestMinor, &latestPatch);
-  sscanf(currentVersion, "%d.%d.%d", &currentMajor, &currentMinor, &currentPatch);
-
-  /*
-   * Compare major versions.
-   * If they differ, return true if latest major version greater than current major version
-   * otherwise return false.
-   */
-  if (latestMajor != currentMajor) return latestMajor > currentMajor;
-
-  /*
-   * Compare minor versions.
-   * If they differ, return true if latest minor version greater than current minor version
-   * otherwise return false.
-   */
-  if (latestMinor != currentMinor) return latestMinor > currentMinor;
-
-  /*
-   * Check patch versions.
-   */
-  if (latestPatch != currentPatch) return latestPatch > currentPatch;
-
-  // If we reach here, it means all segments are equal.
-  // One final check, if we're on an RC build (contains "-rc"), we should consider the latest version as newer even if
-  // the segments are equal, since RC builds are pre-release versions.
-  if (strstr(currentVersion, "-rc") != nullptr) {
-    return true;
-  }
-
-  return false;
+  // latestVersion is the release's raw tag_name ("almanac-v1.0.1"), which does
+  // not parse as a bare semantic version -- SemVer::isNewer skips the prefix
+  // and reports "not newer" for anything it cannot parse in full. See
+  // lib/Version/SemVer.h for why the tags carry a prefix at all.
+  return SemVer::isNewer(latestVersion.c_str(), ALMANAC_VERSION);
 }
 
 const std::string& OtaUpdater::getLatestVersion() const { return latestVersion; }
