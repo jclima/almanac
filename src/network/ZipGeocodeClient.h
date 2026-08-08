@@ -17,7 +17,12 @@ class ZipGeocodeClient {
     // state (the 404 body is never fed to it).
     NotFound,
     // Transport/HTTP failure: DNS, TLS, timeout, or any status other than
-    // 200/404. parser is left in its reset() state.
+    // 200/404. parser is left in its reset() state -- except when a
+    // malformed-JSON byte mid-stream aborts an otherwise-200 response; then
+    // parser holds its partial data with hasError()==true instead. Callers
+    // that need to tell the two apart (e.g.
+    // FlightTrackerSettingsActivity::performZipLookup()) check
+    // parser.hasError().
     Error,
   };
 
