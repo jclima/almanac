@@ -81,4 +81,95 @@ constexpr MenuRowLayout menuRowLayout(const int top, const int height, const int
   return MenuRowLayout{top, rowHeight, rowStep, firstIndex, visibleCount, pageItems};
 }
 
+// --- Home tile layout -------------------------------------------------------
+// Home is four fixed tiers (masthead, Continue Reading, grid, Settings) rather
+// than the uniform rows menuRowLayout() describes, so it gets its own
+// arithmetic. It lives here, constexpr and renderer-free, because
+// test/home_menu_layout/ links no theme translation unit and can only reach
+// header-inline code -- the same reason the rest of this header exists.
+constexpr int kHomeMastheadHeight = 112;  // full-bleed brand bar; carries the mark, not just a baseline
+constexpr int kHomeTierGap = 12;          // gap between tiers, and between grid rows
+constexpr int kHomeWideTileHeight = 92;   // Continue Reading and Settings
+constexpr int kHomeGridTileHeight = 128;  // fixed in every composition; the centring rule depends on it
+constexpr int kHomeGridColumnGap = 14;
+constexpr int kHomeGridColumns = 2;
+
+// tileCount is every selectable entry including both wide tiles.
+// leadingWideTile is true when index 0 is Continue Reading. Without it the
+// "index 0 is full width" rule would make Browse Files full width on a device
+// with no recent book, because the theme cannot see HomeActivity's book list.
+struct HomeComposition {
+  int tileCount;
+  bool leadingWideTile;
+};
+
+// Tiles in the grid: everything except the leading Continue Reading tile (when
+// present) and the trailing Settings tile (always).
+constexpr int homeGridTileCount(const HomeComposition c) {
+  const int wide = (c.leadingWideTile ? 1 : 0) + 1;
+  return c.tileCount > wide ? c.tileCount - wide : 0;
+}
+
+constexpr int homeGridRowCount(const HomeComposition c) {
+  const int n = homeGridTileCount(c);
+  return (n + kHomeGridColumns - 1) / kHomeGridColumns;
+}
+
+// Top of the Settings tier, measured up from the hints bar so the grid always
+// has a fixed floor.
+constexpr int homeSettingsTop(const ThemeMetrics& metrics, const int pageHeight) {
+  return buttonHintsTop(metrics, pageHeight) - kHomeTierGap - kHomeWideTileHeight;
+}
+
+// Top of the region the grid may occupy: directly below whichever tier precedes it.
+constexpr int homeGridRegionTop(const HomeComposition c) {
+  return c.leadingWideTile ? kHomeMastheadHeight + kHomeTierGap + kHomeWideTileHeight + kHomeTierGap
+                           : kHomeMastheadHeight + kHomeTierGap;
+}
+
+// The grid block is centred in its region rather than stretched, so a row count
+// that changes with OPDS needs no special-casing and tile height stays fixed.
+constexpr int homeGridTop(const ThemeMetrics& metrics, const int pageHeight, const HomeComposition c) {
+  const int regionTop = homeGridRegionTop(c);
+  const int regionHeight = homeSettingsTop(metrics, pageHeight) - kHomeTierGap - regionTop;
+  const int rows = homeGridRowCount(c);
+  const int blockHeight = rows > 0 ? rows * kHomeGridTileHeight + (rows - 1) * kHomeTierGap : 0;
+  const int slack = regionHeight - blockHeight;
+  return regionTop + (slack > 0 ? slack / 2 : 0);
+}
+
+// Rect for the masthead tier. Kept alongside homeTileRect (which bakes the
+// same kHomeMastheadHeight constant into every tile's origin) so the caller
+// does not hold its own second copy of that geometry.
+constexpr Rect homeMastheadRect(const int pageWidth) { return Rect{0, 0, pageWidth, kHomeMastheadHeight}; }
+
+// Rect for one tile. Queried by AlmanacTheme to draw and by HomeActivity to
+// hit-test, which is what keeps drawn tiles and touch targets from drifting.
+constexpr Rect homeTileRect(const ThemeMetrics& metrics, const int pageWidth, const int pageHeight,
+                            const HomeComposition c, const int index) {
+  const int sidePad = metrics.contentSidePadding;
+  const int fullWidth = pageWidth - sidePad * 2;
+
+  if (index <= 0 && c.leadingWideTile) {
+    return Rect{sidePad, kHomeMastheadHeight + kHomeTierGap, fullWidth, kHomeWideTileHeight};
+  }
+  if (index >= c.tileCount - 1) {
+    return Rect{sidePad, homeSettingsTop(metrics, pageHeight), fullWidth, kHomeWideTileHeight};
+  }
+
+  const int gridIndex = index - (c.leadingWideTile ? 1 : 0);
+  const int row = gridIndex / kHomeGridColumns;
+  const int col = gridIndex % kHomeGridColumns;
+  const int y = homeGridTop(metrics, pageHeight, c) + row * (kHomeGridTileHeight + kHomeTierGap);
+
+  // A final row holding one tile spans the full width instead of leaving a gap.
+  const bool loneInFinalRow = row == homeGridRowCount(c) - 1 && homeGridTileCount(c) % kHomeGridColumns == 1;
+  if (loneInFinalRow) {
+    return Rect{sidePad, y, fullWidth, kHomeGridTileHeight};
+  }
+
+  const int tileWidth = (fullWidth - kHomeGridColumnGap) / kHomeGridColumns;
+  return Rect{sidePad + col * (tileWidth + kHomeGridColumnGap), y, tileWidth, kHomeGridTileHeight};
+}
+
 }  // namespace MenuLayout

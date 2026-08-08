@@ -1,6 +1,7 @@
 #pragma once
 
 #include "components/themes/BaseTheme.h"
+#include "components/themes/MenuLayout.h"
 
 class GfxRenderer;
 
@@ -30,7 +31,7 @@ constexpr ThemeMetrics values = {.batteryWidth = 15,
                                  .homeCoverHeight = 400,
                                  .homeCoverTileHeight = 400,
                                  .homeRecentBooksCount = 1,
-                                 .homeContinueReadingInMenu = false,
+                                 .homeContinueReadingInMenu = true,
                                  .homeMenuTopOffset = 10,
                                  .buttonHintsHeight = 48,
                                  .sideButtonHintsWidth = 30,
@@ -94,8 +95,11 @@ class AlmanacTheme final : public BaseTheme {
 
   // This theme's selected tile draws a stroke OUTSIDE its fill, so the last
   // row needs that much clearance beyond itself. Reserved here rather than in
-  // drawButtonMenu alone so HomeActivity's hit-test, which calls this same
-  // virtual, derives the identical geometry.
+  // drawButtonMenu alone so any caller deriving row geometry from this virtual
+  // gets the identical reach. HomeActivity's hit-test is not such a caller --
+  // it uses MenuLayout::homeTileRect directly (see HomeActivity::loop()) --
+  // but getButtonMenuLayout/drawButtonMenu stay compiled (see drawButtonMenu's
+  // definition) so this override's contract still has to hold.
   MenuRowLayout getButtonMenuLayout(const GfxRenderer& renderer, Rect rect, int buttonCount,
                                     int selectedIndex) const override;
 
@@ -115,4 +119,17 @@ class AlmanacTheme final : public BaseTheme {
   void drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                       const std::function<std::string(int index)>& buttonLabel,
                       const std::function<UIIcon(int index)>& rowIcon) const override;
+
+  // Home's brand bar. Home-specific rather than a drawHeader variant: it
+  // carries the mark and no title, and its height is a layout tier rather
+  // than a ThemeMetrics value.
+  void drawHomeMasthead(GfxRenderer& renderer, Rect rect) const;
+
+  // Home's tiered tile menu. Takes the composition rather than deriving it,
+  // because only HomeActivity knows whether a recent book exists.
+  // pageWidth/pageHeight must be renderer.getScreenWidth()/getScreenHeight():
+  // this method fetches metrics internally, so a caller passing other
+  // dimensions would silently drift from HomeActivity's hit-test.
+  void drawHomeMenu(GfxRenderer& renderer, int pageWidth, int pageHeight, MenuLayout::HomeComposition composition,
+                    int selectedIndex, const std::function<std::string(int index)>& tileLabel) const;
 };
