@@ -6,6 +6,7 @@
 #include <Logging.h>
 #include <WiFi.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -36,10 +37,9 @@ bool parseCoordinate(const std::string& text, double minValue, double maxValue, 
 
 bool isValidZip(const std::string& text) {
   if (text.size() != 5) return false;
-  for (const char c : text) {
-    if (c < '0' || c > '9') return false;
-  }
-  return true;
+  // Explicit range check rather than std::isdigit: isdigit is locale-dependent
+  // and undefined for negative char values, which a UTF-8 lead byte produces.
+  return std::all_of(text.begin(), text.end(), [](const char c) { return c >= '0' && c <= '9'; });
 }
 }  // namespace
 
