@@ -240,6 +240,10 @@ class AlmanacSettings : public PersistableStore<AlmanacSettings> {
   // (category-less), same pattern as opdsDownloadFolder.
   char flightTrackerHomeLat[16] = "";
   char flightTrackerHomeLon[16] = "";
+  // 5-digit US zip code, geocoded to Lat/Lon above on submit ("" = unset).
+  // Persisted so the settings row shows the last entry rather than resetting
+  // to blank; Lat/Lon remain the values NearbyFlightsActivity actually reads.
+  char flightTrackerHomeZip[6] = "";
   // Tesserae's base URL and per-device credentials. The token is persisted
   // obfuscated through SettingsList.h and never rendered in the device UI.
   // An empty device ID means "derive a stable ID from the Wi-Fi MAC".

@@ -1,8 +1,10 @@
 #include "FlightTrackerSettingsActivity.h"
 
+#include <Arduino.h>
 #include <GfxRenderer.h>
 #include <I18n.h>
 #include <Logging.h>
+#include <WiFi.h>
 
 #include <cmath>
 #include <cstdio>
@@ -11,8 +13,11 @@
 
 #include "AlmanacSettings.h"
 #include "MappedInputManager.h"
+#include "SilentRestart.h"
+#include "activities/network/WifiSelectionActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
+#include "network/ZipGeocodeClient.h"
 
 namespace {
 bool parseCoordinate(const std::string& text, double minValue, double maxValue, double& outValue) {
@@ -28,6 +33,14 @@ bool parseCoordinate(const std::string& text, double minValue, double maxValue, 
   outValue = value;
   return true;
 }
+
+bool isValidZip(const std::string& text) {
+  if (text.size() != 5) return false;
+  for (const char c : text) {
+    if (c < '0' || c > '9') return false;
+  }
+  return true;
+}
 }  // namespace
 
 void FlightTrackerSettingsActivity::onEnter() {
@@ -37,9 +50,38 @@ void FlightTrackerSettingsActivity::onEnter() {
   requestUpdate();
 }
 
-void FlightTrackerSettingsActivity::onExit() { Activity::onExit(); }
+void FlightTrackerSettingsActivity::onExit() {
+  Activity::onExit();
+  // Unlike NearbyFlightsActivity (a top-level Home entry, where landing back
+  // on Home after a reboot is exactly where Back would go anyway), this
+  // activity is reached via Settings -> Flight Tracker. silentRestart() only
+  // knows how to land on Home or the reader -- rebooting there on every exit
+  // would strand a user who only edited Lat/Lon/Radius by hand, bouncing
+  // them out of the settings hierarchy they were navigating. So the teardown
+  // is gated on wifiUsedThisSession (set in launchWifiSelection(), when this
+  // screen brings the radio up to connect, and in performZipLookup(), the
+  // already-connected fast path that skips straight to a fetch -- see the
+  // member comment in the header) rather than on raw WiFi state -- matching
+  // SilentRestart.h's stated purpose (clearing fragmentation from a WiFi
+  // *session*, not merely "WiFi is on"). A zip
+  // lookup still lands the user on Home rather than back in Settings; that
+  // residual is a real tradeoff, not a bug, given the destinations
+  // silentRestart() offers.
+  if (wifiUsedThisSession && WiFi.getMode() != WIFI_MODE_NULL) {
+    WiFi.disconnect(false);
+    delay(30);
+    silentRestart();
+  }
+}
 
 void FlightTrackerSettingsActivity::loop() {
+  // CHECK_WIFI and LOADING run to completion synchronously inside the call
+  // that set them (checkAndConnectWifi()/performZipLookup() are blocking,
+  // same as NearbyFlightsActivity's fetchFlights()); WIFI_SELECTION hands
+  // the screen to a pushed WifiSelectionActivity. None of the three should
+  // process row navigation or Back/Confirm here.
+  if (zipLookupState != ZipLookupState::IDLE) return;
+
   if (!errorMessage.empty() && millis() - errorShownAt >= ERROR_MESSAGE_DURATION_MS) {
     errorMessage.clear();
     requestUpdate();
@@ -83,6 +125,29 @@ void FlightTrackerSettingsActivity::handleSelection() {
     auto handler = [this](const ActivityResult& result) {
       if (!result.isCancelled) {
         const auto& kb = std::get<KeyboardResult>(result.data);
+        if (isValidZip(kb.text)) {
+          strncpy(pendingZip, kb.text.c_str(), sizeof(pendingZip) - 1);
+          pendingZip[sizeof(pendingZip) - 1] = '\0';
+          zipLookupState = ZipLookupState::CHECK_WIFI;
+          requestUpdate();
+          checkAndConnectWifi();
+        } else {
+          rejectZip(kb.text);
+        }
+      }
+      requestUpdate();
+    };
+    startActivityForResult(
+        std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_FLIGHT_TRACKER_HOME_ZIP),
+                                                std::string(SETTINGS.flightTrackerHomeZip), 5, InputType::Text),
+        handler);
+    return;
+  }
+
+  if (selectedIndex == 1) {
+    auto handler = [this](const ActivityResult& result) {
+      if (!result.isCancelled) {
+        const auto& kb = std::get<KeyboardResult>(result.data);
         double parsed = 0;
         if (parseCoordinate(kb.text, -90.0, 90.0, parsed)) {
           strncpy(SETTINGS.flightTrackerHomeLat, kb.text.c_str(), sizeof(SETTINGS.flightTrackerHomeLat) - 1);
@@ -101,7 +166,7 @@ void FlightTrackerSettingsActivity::handleSelection() {
     return;
   }
 
-  if (selectedIndex == 1) {
+  if (selectedIndex == 2) {
     auto handler = [this](const ActivityResult& result) {
       if (!result.isCancelled) {
         const auto& kb = std::get<KeyboardResult>(result.data);
@@ -144,14 +209,119 @@ void FlightTrackerSettingsActivity::rejectCoordinate(const std::string& text) {
   LOG_ERR("FTS", "Rejected coordinate input: %s", text.c_str());
 }
 
+void FlightTrackerSettingsActivity::rejectZip(const std::string& text) {
+  errorMessage = tr(STR_INVALID_ZIP_CODE);
+  errorShownAt = millis();
+  LOG_ERR("FTS", "Rejected zip input: %s", text.c_str());
+}
+
+void FlightTrackerSettingsActivity::checkAndConnectWifi() {
+  if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0)) {
+    performZipLookup();
+    return;
+  }
+  launchWifiSelection();
+}
+
+void FlightTrackerSettingsActivity::launchWifiSelection() {
+  zipLookupState = ZipLookupState::WIFI_SELECTION;
+  wifiUsedThisSession = true;
+  requestUpdate();
+  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
+                         [this](const ActivityResult& result) { onWifiSelectionComplete(!result.isCancelled); });
+}
+
+void FlightTrackerSettingsActivity::onWifiSelectionComplete(const bool connected) {
+  if (connected) {
+    performZipLookup();
+    return;
+  }
+  // Leave WiFi up; onExit's silent reboot handles teardown without fragmenting.
+  zipLookupState = ZipLookupState::IDLE;
+  errorMessage = tr(STR_WIFI_CONN_FAILED);
+  errorShownAt = millis();
+  requestUpdate();
+}
+
+void FlightTrackerSettingsActivity::performZipLookup() {
+  zipLookupState = ZipLookupState::LOADING;
+  wifiUsedThisSession = true;
+  // Immediate, not deferred: performZipLookup() is called from a result
+  // handler (KeyboardEntryActivity's or WifiSelectionActivity's) whose
+  // return already released RenderLock and reassigned currentActivity back
+  // to this activity -- but this function itself doesn't return until the
+  // blocking ZipGeocodeClient::geocode() call below completes. A deferred
+  // requestUpdate() would only notify the render task after that blocking
+  // call returns, so the "Looking up 90210..." subtitle would never
+  // actually paint before the network round trip. See
+  // NearbyFlightsActivity::fetchFlights() for the identical situation.
+  requestUpdate(true);
+
+  zipParser.reset();
+  const ZipGeocodeClient::Result result = ZipGeocodeClient::geocode(pendingZip, zipParser);
+
+  switch (result) {
+    case ZipGeocodeClient::Result::Ok: {
+      if (zipParser.hasError() || !zipParser.geocode().found) {
+        LOG_ERR("FTS", "Zip lookup for %s returned a malformed response", pendingZip);
+        errorMessage = tr(STR_ZIP_LOOKUP_ERROR);
+        break;
+      }
+      const auto& geo = zipParser.geocode();
+      snprintf(SETTINGS.flightTrackerHomeLat, sizeof(SETTINGS.flightTrackerHomeLat), "%.4f", geo.latitude);
+      snprintf(SETTINGS.flightTrackerHomeLon, sizeof(SETTINGS.flightTrackerHomeLon), "%.4f", geo.longitude);
+      strncpy(SETTINGS.flightTrackerHomeZip, pendingZip, sizeof(SETTINGS.flightTrackerHomeZip) - 1);
+      SETTINGS.flightTrackerHomeZip[sizeof(SETTINGS.flightTrackerHomeZip) - 1] = '\0';
+      SETTINGS.saveToFile();
+      errorMessage.clear();
+      break;
+    }
+    case ZipGeocodeClient::Result::NotFound:
+      LOG_ERR("FTS", "No record for zip %s (HTTP 404)", pendingZip);
+      errorMessage = tr(STR_ZIP_NOT_FOUND);
+      break;
+    case ZipGeocodeClient::Result::Error:
+      // zipParser is only ever fed bytes while the HTTP body is streaming on
+      // a 200 response (ZipGeocodeClient::geocode() leaves it untouched on a
+      // non-200/DNS/TLS/connect failure, and a truncated-but-valid body never
+      // sets hasError() -- see ZipGeocodeParserTest.TruncatedBodyNeverPresentsAsFound).
+      // A malformed-JSON byte mid-stream makes the write callback in
+      // HttpDownloader.cpp return false, which aborts the transfer and
+      // surfaces here as Result::Error rather than Result::Ok -- so
+      // hasError() is exactly the signal that tells transport and parse
+      // failures apart at this call site, matching
+      // NearbyFlightsActivity::fetchFlights()'s two-separate-checks
+      // convention.
+      if (zipParser.hasError()) {
+        LOG_ERR("FTS", "Zip lookup parse failure for %s (malformed JSON mid-stream)", pendingZip);
+      } else {
+        LOG_ERR("FTS", "Zip lookup transport failure for %s", pendingZip);
+      }
+      errorMessage = tr(STR_ZIP_LOOKUP_ERROR);
+      break;
+  }
+
+  zipLookupState = ZipLookupState::IDLE;
+  errorShownAt = millis();
+  requestUpdate();
+}
+
 void FlightTrackerSettingsActivity::render(RenderLock&&) {
   renderer.clearScreen();
 
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
 
+  std::string subtitle;
+  if (zipLookupState == ZipLookupState::LOADING) {
+    char buf[48];
+    snprintf(buf, sizeof(buf), tr(STR_ZIP_LOOKUP_LOADING_FORMAT), pendingZip);
+    subtitle = buf;
+  } else if (!errorMessage.empty()) {
+    subtitle = errorMessage;
+  }
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_FLIGHT_TRACKER),
-                 errorMessage.empty() ? nullptr : errorMessage.c_str());
+                 subtitle.empty() ? nullptr : subtitle.c_str());
 
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const int contentHeight =
@@ -162,8 +332,10 @@ void FlightTrackerSettingsActivity::render(RenderLock&&) {
       [](int index) -> std::string {
         switch (index) {
           case 0:
-            return I18n::getInstance().get(StrId::STR_FLIGHT_TRACKER_HOME_LAT);
+            return I18n::getInstance().get(StrId::STR_FLIGHT_TRACKER_HOME_ZIP);
           case 1:
+            return I18n::getInstance().get(StrId::STR_FLIGHT_TRACKER_HOME_LAT);
+          case 2:
             return I18n::getInstance().get(StrId::STR_FLIGHT_TRACKER_HOME_LON);
           default:
             return I18n::getInstance().get(StrId::STR_FLIGHT_TRACKER_RADIUS);
@@ -173,9 +345,12 @@ void FlightTrackerSettingsActivity::render(RenderLock&&) {
       [](int index) -> std::string {
         switch (index) {
           case 0:
-            return SETTINGS.flightTrackerHomeLat[0] ? std::string(SETTINGS.flightTrackerHomeLat)
+            return SETTINGS.flightTrackerHomeZip[0] ? std::string(SETTINGS.flightTrackerHomeZip)
                                                     : std::string(I18n::getInstance().get(StrId::STR_NOT_SET));
           case 1:
+            return SETTINGS.flightTrackerHomeLat[0] ? std::string(SETTINGS.flightTrackerHomeLat)
+                                                    : std::string(I18n::getInstance().get(StrId::STR_NOT_SET));
+          case 2:
             return SETTINGS.flightTrackerHomeLon[0] ? std::string(SETTINGS.flightTrackerHomeLon)
                                                     : std::string(I18n::getInstance().get(StrId::STR_NOT_SET));
           default: {
