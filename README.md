@@ -88,14 +88,16 @@ stored choice is ignored and dropped on the next settings save.
 
 ## Status
 
-**Version 1.0.1** — Almanac's own numbering, restarted at 1.0.0 rather than
+**Version 1.0.2** — Almanac's own numbering, restarted at 1.0.0 rather than
 continuing CrossPoint's. Built and flashed on real X4 hardware.
 
-1.0.1 fixes the OTA update check. It parsed a release's raw `tag_name`
-(`almanac-v1.0.0`) as if it were a bare semantic version; the parse failed and
-the comparison then ran on uninitialized values, so the answer was
-indeterminate. **Don't rely on 1.0.0's update check — flash 1.0.1 over USB
-once.** OTA is trustworthy from 1.0.1 on.
+1.0.2 makes both firmware-install paths check the MCU an image was built for,
+so neither the over-the-air update nor the SD-card flash will accept a binary
+meant for the other chip.
+
+Devices on 1.0.0 must be flashed over USB once: that version's update check
+compared uninitialized values and cannot be relied on to find anything. From
+1.0.1 onward, **Settings → Check for Update** works normally.
 
 Verified by CI on every change: the `default` and `sticky` build environments
 (the two target MCU families — see [Build environments](#build-environments));
