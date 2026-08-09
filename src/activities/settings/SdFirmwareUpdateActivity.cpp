@@ -103,6 +103,11 @@ bool SdFirmwareUpdateActivity::validateFirmware() {
       errorMessage = tr(STR_FIRMWARE_TOO_LARGE);
     } else if (vr == firmware_flash::Result::TOO_SMALL) {
       errorMessage = tr(STR_FIRMWARE_TOO_SMALL);
+    } else if (vr == firmware_flash::Result::BAD_CHIP) {
+      // A build for another MCU: well-formed, just not runnable here. Worth its
+      // own message so the user knows to fetch a different file rather than
+      // suspecting a corrupt download.
+      errorMessage = tr(STR_FIRMWARE_WRONG_DEVICE);
     } else {
       errorMessage = tr(STR_INVALID_FIRMWARE);
     }

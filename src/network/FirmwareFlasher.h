@@ -9,8 +9,12 @@
 // esp_partition_write + ota_boot::switchTo (no Arduino Update class, no
 // esp_image_verify — those reject our patched image on X4 silicon).
 //
-// Both the SD update activity and the OTA path land here. OTA first
-// downloads the firmware to an SD-card cache file, then calls this.
+// SdFirmwareUpdateActivity is the only caller. The OTA path does not land
+// here: OtaUpdater::installUpdate() streams the download straight through
+// esp_ota_write() and finishes with esp_ota_end() /
+// esp_ota_set_boot_partition(), so it gets ESP-IDF's own image verification
+// for free. This path does not, which is why validateImageFile() below has to
+// reproduce those checks itself.
 
 namespace firmware_flash {
 
@@ -20,6 +24,7 @@ enum class Result {
   TOO_SMALL,
   TOO_LARGE,
   BAD_MAGIC,
+  BAD_CHIP,      // built for a different MCU (ESP image header chip_id mismatch)
   BAD_SEGMENTS,  // segment table malformed or runs past EOF
   BAD_CHECKSUM,  // ESP image XOR checksum mismatch
   BAD_SHA,       // SHA256 trailer mismatch (hash_appended images)
