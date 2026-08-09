@@ -4,7 +4,9 @@
 #include <I18n.h>
 #include <Utf8.h>
 
+#include <algorithm>
 #include <cstring>
+#include <string>
 #include <vector>
 
 #include "AlmanacSettings.h"
@@ -15,6 +17,21 @@
 #include "components/UITheme.h"
 #include "components/themes/MenuLayout.h"
 #include "fontIds.h"
+
+namespace {
+// Whether a string would actually show something if drawn. A title of only
+// spaces is as useless on a tile as an empty one, and EPUB metadata can
+// legitimately carry "<dc:title> </dc:title>".
+//
+// Compared as unsigned char deliberately: a UTF-8 lead or continuation byte is
+// >= 0x80, which is NEGATIVE as a signed char on this target, so a signed
+// comparison would judge every non-ASCII title -- Cyrillic, Greek, CJK -- to be
+// blank and silently replace it with the generic label. std::isspace is avoided
+// for the same reason, plus its locale dependence.
+bool hasVisibleCharacter(const std::string& text) {
+  return std::any_of(text.begin(), text.end(), [](const char c) { return static_cast<unsigned char>(c) > ' '; });
+}
+}  // namespace
 
 MenuLayout::HomeComposition HomeActivity::menuComposition() const {
   return MenuLayout::HomeComposition{getMenuItemCount(), hasContinueReadingTile()};
@@ -222,10 +239,11 @@ void HomeActivity::render(RenderLock&&) {
   GUI.drawHomeMenu(
       renderer, pageWidth, pageHeight, menuComposition(), selectorIndex, [this, &menuItems](int index) -> std::string {
         // Identify WHICH book, not just that one exists -- a book with no
-        // <dc:title> in its EPUB metadata leaves RecentBook::title empty
-        // (Epub::getTitle() has no filename fallback, unlike Xtc/Txt), so
-        // fall through to the generic label rather than draw a blank tile.
-        if (index == 0 && hasContinueReadingTile() && !recentBooks[0].title.empty()) {
+        // usable <dc:title> in its EPUB metadata leaves RecentBook::title
+        // empty or blank (Epub::getTitle() has no filename fallback, unlike
+        // Xtc/Txt, and does not trim), so fall through to the generic label
+        // rather than draw a tile with nothing on it.
+        if (index == 0 && hasContinueReadingTile() && hasVisibleCharacter(recentBooks[0].title)) {
           return recentBooks[0].title;
         }
         return index >= 0 && index < static_cast<int>(menuItems.size()) ? std::string(menuItems[index]) : std::string();
