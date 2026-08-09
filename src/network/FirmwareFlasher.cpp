@@ -1,11 +1,13 @@
 #include "FirmwareFlasher.h"
 
 #include <Arduino.h>
+#include <EspImageHeader.h>
 #include <HalStorage.h>
 #include <Logging.h>
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
 #include <mbedtls/sha256.h>
+#include <sdkconfig.h>
 #include <spi_flash_mmap.h>
 
 #include <algorithm>
@@ -17,15 +19,17 @@
 namespace firmware_flash {
 
 namespace {
-constexpr uint8_t ESP_IMAGE_MAGIC = 0xE9;
 constexpr size_t MIN_FIRMWARE_SIZE = 64 * 1024;
 constexpr size_t SEC = SPI_FLASH_SEC_SIZE;  // 4 KiB
 constexpr size_t BLK = 64 * 1024;           // 64 KiB block-erase granularity
 constexpr size_t CHUNK = 4096;
 constexpr size_t SHA_TRAILER = 32;
 constexpr uint8_t CHECKSUM_SEED = 0xEF;
-constexpr size_t HEADER_SIZE = 24;
 constexpr size_t SEG_HEADER_SIZE = 8;
+
+// The esp_chip_id_t this build runs on, straight from the same sdkconfig value
+// the bootloader compares against in bootloader_common_check_chip_validity().
+constexpr uint16_t EXPECTED_CHIP_ID = CONFIG_IDF_FIRMWARE_CHIP_ID;
 }  // namespace
 
 const char* resultName(Result r) {
@@ -40,6 +44,8 @@ const char* resultName(Result r) {
       return "TOO_LARGE";
     case Result::BAD_MAGIC:
       return "BAD_MAGIC";
+    case Result::BAD_CHIP:
+      return "BAD_CHIP";
     case Result::BAD_SEGMENTS:
       return "BAD_SEGMENTS";
     case Result::BAD_CHECKSUM:
@@ -106,19 +112,36 @@ Result validateImageFile(const char* sdPath, size_t partitionSize) {
     return Result::TOO_LARGE;
   }
 
-  uint8_t header[HEADER_SIZE];
-  if (file.read(header, HEADER_SIZE) != static_cast<int>(HEADER_SIZE)) {
-    LOG_ERR("FLASH", "validate: header read failed");
+  uint8_t headerBytes[EspImage::HEADER_SIZE];
+  const int headerRead = file.read(headerBytes, sizeof(headerBytes));
+  EspImage::Header header;
+  if (headerRead < 0 || !EspImage::parseHeader(headerBytes, static_cast<size_t>(headerRead), header)) {
+    LOG_ERR("FLASH", "validate: header read failed (got %d of %u)", headerRead,
+            static_cast<unsigned>(EspImage::HEADER_SIZE));
     file.close();
     return Result::READ_FAIL;
   }
-  if (header[0] != ESP_IMAGE_MAGIC) {
-    LOG_ERR("FLASH", "validate: bad magic 0x%02X", header[0]);
+  if (header.magic != EspImage::IMAGE_MAGIC) {
+    LOG_ERR("FLASH", "validate: bad magic 0x%02X", header.magic);
     file.close();
     return Result::BAD_MAGIC;
   }
-  const uint8_t segCount = header[1];
-  const bool hashAppended = header[23] != 0;
+  // An image built for another MCU passes everything below -- its segment
+  // table, XOR checksum and SHA256 trailer are all internally consistent -- so
+  // chip_id is the only thing that can reject it, and it has to be rejected
+  // here: the write path uses raw esp_partition_write() plus a hand-written
+  // otadata sector, never esp_ota_end() / esp_ota_set_boot_partition(), whose
+  // esp_image_verify() is where ESP-IDF would otherwise catch this. Without
+  // the check the wrong .bin is written in full and only the second-stage
+  // bootloader refuses it, one reboot later.
+  if (header.chipId != EXPECTED_CHIP_ID) {
+    LOG_ERR("FLASH", "validate: image chip_id 0x%04X, this is %s (0x%04X)", static_cast<unsigned>(header.chipId),
+            CONFIG_IDF_TARGET, static_cast<unsigned>(EXPECTED_CHIP_ID));
+    file.close();
+    return Result::BAD_CHIP;
+  }
+  const uint8_t segCount = header.segmentCount;
+  const bool hashAppended = header.hashAppended;
 
   auto buf = std::unique_ptr<uint8_t[]>(new (std::nothrow) uint8_t[CHUNK]);
   if (!buf) {
@@ -129,10 +152,10 @@ Result validateImageFile(const char* sdPath, size_t partitionSize) {
   mbedtls_sha256_context shaCtx;
   mbedtls_sha256_init(&shaCtx);
   mbedtls_sha256_starts(&shaCtx, /*is224=*/0);
-  mbedtls_sha256_update(&shaCtx, header, HEADER_SIZE);
+  mbedtls_sha256_update(&shaCtx, headerBytes, sizeof(headerBytes));
 
   uint8_t xorAccum = CHECKSUM_SEED;
-  size_t pos = HEADER_SIZE;
+  size_t pos = sizeof(headerBytes);
 
   for (uint8_t i = 0; i < segCount; i++) {
     if (pos + SEG_HEADER_SIZE > fileSize) {
