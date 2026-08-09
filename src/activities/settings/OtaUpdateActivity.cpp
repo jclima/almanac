@@ -71,6 +71,17 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
 void OtaUpdateActivity::onEnter() {
   Activity::onEnter();
 
+  // Nothing is published for this MCU (see OtaUpdater::releaseBinaryRunsOnThisDevice),
+  // so settle on "No update available" without bringing the radio up or asking
+  // the user to pick a network first. Returning before WiFi.mode() also keeps
+  // onExit() off its silentRestart() path, which only applies once the radio is up.
+  if constexpr (!OtaUpdater::releaseBinaryRunsOnThisDevice) {
+    LOG_INF("OTA", "No release binary for this device; nothing to check");
+    state = NO_UPDATE;
+    requestUpdate();
+    return;
+  }
+
   // Turn on WiFi immediately
   LOG_DBG("OTA", "Turning on WiFi...");
   WiFi.mode(WIFI_STA);

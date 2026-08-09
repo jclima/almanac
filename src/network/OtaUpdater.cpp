@@ -24,6 +24,15 @@ constexpr char latestReleaseUrl[] = "https://api.github.com/repos/jclima/almanac
 }  // namespace
 
 OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
+  // Guarded here rather than in isUpdateNewer() so the release fetch never
+  // happens at all on a target with no published binary. installUpdate() is
+  // covered too: it gates on isUpdateNewer(), which needs updateAvailable,
+  // which only checkForUpdate() sets.
+  if constexpr (!releaseBinaryRunsOnThisDevice) {
+    LOG_INF("OTA", "No release binary is published for %s; skipping update check", CONFIG_IDF_TARGET);
+    return NO_UPDATE;
+  }
+
   LOG_DBG("OTA", "Checking for update (current: %s)", ALMANAC_VERSION);
 
   // Stream the ~32KB release JSON straight into the parser as it arrives.
