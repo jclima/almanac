@@ -19,7 +19,11 @@ black-ink-on-white so it stays visually judgeable regardless of --invert.
 
   python3 scripts/generate_logo.py                    # writes src/images/Logo120.h
   python3 scripts/generate_logo.py --preview           # also writes a PNG to inspect
-  python3 scripts/generate_logo.py --size 64 --invert  # writes src/images/Logo64Inv.h
+  python3 scripts/generate_logo.py --size 96 --invert  # writes src/images/Logo96Inv.h
+
+Sizes below ~96 are not usable for this mark: the bezel ring's stroke scales
+with the mark, and once it rounds to a single pixel a circle stair-steps
+visibly in 1 bit. Preview before committing to a new size.
 """
 
 import argparse

@@ -13,7 +13,7 @@
 #include "components/UITheme.h"
 #include "components/themes/MenuLayout.h"
 #include "fontIds.h"
-#include "images/Logo64Inv.h"
+#include "images/Logo96Inv.h"
 
 // Internal constants
 namespace {
@@ -526,13 +526,18 @@ void AlmanacTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCo
 void AlmanacTheme::drawHomeMasthead(GfxRenderer& renderer, const Rect rect) const {
   renderer.fillRect(rect.x, rect.y, rect.width, rect.height, true);
 
-  constexpr int kMarkSize = 64;
+  // 96, not 64: the mark's bezel ring scales with the mark, and at 64 it thins
+  // to a single pixel, which a circle cannot render smoothly in 1 bit -- it
+  // stair-steps visibly on device. At 96 the ring lands at 2px and reads as a
+  // circle. 96 is the largest whole-8 size that still leaves padding inside
+  // kHomeMastheadHeight (112), so this needs no layout change.
+  constexpr int kMarkSize = 96;
   const int sidePadding = AlmanacMetrics::values.contentSidePadding;
   // x must stay byte-aligned: drawImage is a byte-aligned blit and snaps to
   // 8px along the rotated axis. contentSidePadding is 16, which is aligned.
   const int markX = rect.x + sidePadding;
   const int markY = rect.y + (rect.height - kMarkSize) / 2;
-  renderer.drawImage(Logo64Inv, markX, markY, kMarkSize, kMarkSize);
+  renderer.drawImage(Logo96Inv, markX, markY, kMarkSize, kMarkSize);
 
   const int wordmarkX = markX + kMarkSize + sidePadding;
   const int wordmarkY = rect.y + (rect.height - renderer.getLineHeight(UI_12_FONT_ID)) / 2;
