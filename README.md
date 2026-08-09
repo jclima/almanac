@@ -135,7 +135,9 @@ esptool.py --chip esp32c3 write_flash 0x0 bootloader.bin 0x8000 partitions.bin 0
 ```
 
 There is no `sticky` binary in the releases — the Seeed Sticky is a different
-MCU family and has to be built from source (below).
+MCU family and has to be built from source (below). Its update check knows
+this and always reports no update, so a Sticky is never offered the X4's
+firmware; keep it current by reflashing from source.
 
 To go back to CrossPoint or to Xteink's official firmware, use the flash tools
 at <https://crosspointreader.com/#flash-tools>.

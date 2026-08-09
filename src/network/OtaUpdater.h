@@ -1,5 +1,7 @@
 #pragma once
 
+#include <sdkconfig.h>
+
 #include <string>
 
 class OtaUpdater {
@@ -28,6 +30,30 @@ class OtaUpdater {
   size_t getProcessedSize() const { return processedSize; }
 
   size_t getTotalSize() const { return totalSize; }
+
+  // Whether a release carries a binary this device can run.
+  //
+  // Releases publish exactly one firmware.bin, built by [env:gh_release],
+  // which targets the ESP32-C3 (its ESP image header carries chip_id 5). The
+  // Sticky is an ESP32-S3 and has no published binary -- it is built from
+  // source -- so it must never be offered one.
+  //
+  // Without this, a Sticky would download 5.5MB only for esp_ota_end() to
+  // reject the image: esp_image_verify() checks the header's chip_id against
+  // the running build's CONFIG_IDF_FIRMWARE_CHIP_ID, so the wrong-MCU image
+  // is refused before esp_ota_set_boot_partition() and the device is never at
+  // risk. The cost is the wasted transfer and a generic failure screen, not a
+  // bad flash.
+  //
+  // Keyed on the MCU rather than on FREEINK_DEVICE_STICKY so any future
+  // non-C3 target inherits the guard. constexpr, so the check-for-update path
+  // compiles out entirely on those builds.
+  static constexpr bool releaseBinaryRunsOnThisDevice =
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+      true;
+#else
+      false;
+#endif
 
   OtaUpdater() = default;
   bool isUpdateNewer() const;
