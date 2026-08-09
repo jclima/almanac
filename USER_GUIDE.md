@@ -33,10 +33,16 @@ Welcome to the **Almanac** firmware. This guide outlines the hardware controls, 
         - [Option C: Self-Hosted Server (Docker Compose)](#option-c-self-hosted-server-docker-compose)
         - [Syncing While Reading](#syncing-while-reading)
       - [3.6.8 Tesserae Sleep Screen](#368-tesserae-sleep-screen)
+      - [3.6.9 Flight Tracker](#369-flight-tracker)
     - [3.7 Sleep Screen](#37-sleep-screen)
       - [Cover settings](#cover-settings)
       - [Custom images](#custom-images)
     - [3.8 Custom Fonts (SD Card)](#38-custom-fonts-sd-card)
+    - [3.9 Nearby Flights Screen](#39-nearby-flights-screen)
+      - [List View](#list-view)
+      - [Radar View](#radar-view)
+      - [Aircraft Detail](#aircraft-detail)
+      - [Wi-Fi, Refreshing and Errors](#wi-fi-refreshing-and-errors)
   - [4. Reading Mode](#4-reading-mode)
     - [Page Turning](#page-turning)
     - [Chapter Navigation](#chapter-navigation)
@@ -94,7 +100,7 @@ Upon turning the device on for the first time, you will be placed on the **[Home
 
 ### 3.1 Home Screen
 
-The Home screen is the main entry point to the firmware. From here you can navigate to **[Reading Mode](#4-reading-mode)** with the most recently read book, the **[Browse Files](#33-browse-files-screen)** screen, the **[Recent Books](#34-recent-books-screen)** screen, the **[File Transfer](#35-file-transfer-screen)** screen, or **[Settings](#36-settings)**.
+The Home screen is the main entry point to the firmware. From here you can navigate to **[Reading Mode](#4-reading-mode)** with the most recently read book, the **[Browse Files](#33-browse-files-screen)** screen, the **[Recent Books](#34-recent-books-screen)** screen, the **[File Transfer](#35-file-transfer-screen)** screen, the **[Nearby Flights](#39-nearby-flights-screen)** screen, or **[Settings](#36-settings)**.
 
 ### 3.2 Reading Mode
 
@@ -296,6 +302,8 @@ The Settings screen allows you to configure the device's behavior. There are a f
 - **Time to Sleep**: Set the duration of inactivity before the device automatically goes to sleep; options are 1, 3, 5, 10 (default), 15 or 30 minutes.
 
 - **Wi-Fi Networks**: Connect to Wi-Fi networks for file transfers and firmware updates.
+
+- **Flight Tracker**: Set the home location and search radius used by the **[Nearby Flights](#39-nearby-flights-screen)** screen. See [Flight Tracker](#369-flight-tracker) below.
 
 - **Tesserae**: Configure the self-hosted dashboard server used by the Tesserae sleep screen.
 
@@ -503,6 +511,31 @@ Almanac contacts Tesserae only while entering sleep; it never wakes itself on a 
 
 Changing the server URL, device ID, or frame mode clears the saved registration token because Tesserae registers monochrome and grayscale panels as separate hardware kinds. The token is obfuscated in the settings file and is never displayed in the device UI.
 
+#### 3.6.9 Flight Tracker
+
+**Settings -> System -> Flight Tracker** configures the home location and search radius used by the **[Nearby Flights](#39-nearby-flights-screen)** screen. There are four rows; press **Confirm** on a row to edit it.
+
+- **Home Zip Code**: A 5-digit US zip code. On submit, Almanac looks the zip up over Wi-Fi via [Zippopotam.us](https://api.zippopotam.us)'s free keyless API and fills in **Home Latitude** and **Home Longitude** for you (rounded to four decimal places). While the lookup runs, "Looking up 90210..." is shown under the screen title.
+  
+  This is the only row that needs Wi-Fi. If the device is not already connected, the Wi-Fi network picker opens first. Any of the following messages may appear under the title, and clears itself after about three seconds:
+  
+  - "Invalid zip code" - the entry was not exactly five digits, so nothing was looked up.
+  - "Zip code not found" - the lookup succeeded but there is no record for that zip.
+  - "Zip lookup failed" - the request could not be completed, or the reply could not be read.
+  - "Wi-Fi connection failed" - no network was joined, so the lookup never ran.
+
+- **Home Latitude**: Latitude in decimal degrees, between -90 and 90 (for example `39.7392`). Rejected entries show "Invalid coordinate" and leave the stored value unchanged.
+
+- **Home Longitude**: Longitude in decimal degrees, between -180 and 180 (for example `-104.9903`).
+
+- **Search Radius (mi)**: How far from the home location to search. Pressing **Confirm** cycles the value in 5-mile steps from 5 up to 200, then wraps back to 5. The default is 30.
+
+Behavior notes:
+
+- Nearby Flights uses **Home Latitude** and **Home Longitude** only. The zip code is a convenience for filling those two fields in; it is not consulted when fetching flights.
+- Latitude and longitude can always be entered by hand. This is the fallback when you are outside the United States, or when a zip lookup fails.
+- Attempting a zip lookup brings up the Wi-Fi radio. When you then leave this screen, the device performs a silent restart to release the memory the radio used, and lands you on the **Home** screen rather than back in Settings. Editing latitude, longitude, or the radius by hand does not use Wi-Fi and does not restart the device.
+
 ### 3.7 Sleep Screen
 
 The **Sleep Screen** setting controls what is displayed when the device goes to sleep:
@@ -557,6 +590,95 @@ There are three ways to install fonts:
 Once installed, custom fonts appear in **Settings → Reader → Font Family** alongside the built-in fonts.
 
 See [docs/sd-card-fonts.md](./docs/sd-card-fonts.md) for full installation details and SD card folder structure.
+
+---
+
+### 3.9 Nearby Flights Screen
+
+Selecting **Nearby Flights** on the **[Home](#31-home-screen)** screen fetches the aircraft currently flying near your home location and shows them three ways: a distance-sorted **[list](#list-view)**, a **[radar](#radar-view)** plan view, and a per-aircraft **[detail](#aircraft-detail)** screen.
+
+Two things are needed before the screen is useful:
+
+1. A home location, set in **[Settings -> System -> Flight Tracker](#369-flight-tracker)**. Without one, the screen shows "Set a home location in Settings to see nearby flights"; press **Back** or **Confirm** to return Home.
+2. Wi-Fi. See [Wi-Fi, Refreshing and Errors](#wi-fi-refreshing-and-errors) below.
+
+Aircraft data comes from [OpenSky Network](https://opensky-network.org)'s free anonymous API, and the optional aircraft type and registration lookup on the detail screen comes from [adsbdb](https://www.adsbdb.com). Neither needs an account or an API key.
+
+In the list and radar views:
+
+| Action                     | Buttons                                       |
+| -------------------------- | --------------------------------------------- |
+| **Next Aircraft**          | Press **Right** _or_ **Volume Down**          |
+| **Previous Aircraft**      | Press **Volume Up**                           |
+| **Switch List / Radar**    | Press **Left**                                |
+| **Open Aircraft Detail**   | Press **Confirm**                             |
+| **Refresh**                | Press and **hold** **Confirm** for about half a second |
+| **Return to Home**         | Press **Back**                                |
+
+On the detail screen, only **Back** is active; it returns you to the view you opened the aircraft from. With no aircraft in range there is nothing to select, so the **Confirm** hint changes to **Refresh** and a short press does nothing.
+
+> [!NOTE]
+> Almanac only fetches flights when you ask it to: once when you open the screen, and again on each **Refresh**. Nothing is polled in the background, and the display does not update on its own. The device also does not go to sleep on its own while this screen is open, so leave it only when you are done watching.
+
+Every fetch keeps the **20 closest aircraft** within the configured search radius. If more than 20 are in range, the farthest ones are dropped. Only airborne aircraft are shown, so a plane sitting or taxiing at a nearby airport does not appear. When nothing is in range, both views show "No flights within 30 mi" (with your configured radius).
+
+#### List View
+
+The list is sorted nearest-first. Each row shows:
+
+- The aircraft's **callsign**, or "Unknown" when the aircraft is not broadcasting one.
+- Its **distance and bearing** from your home location, as an eight-point compass direction (for example `12.4 mi NE`).
+- Its **altitude** in feet, on the right-hand side, when the aircraft reports one.
+
+Press **Confirm** on a row to open its **[detail](#aircraft-detail)** screen.
+
+#### Radar View
+
+Press **Left** to switch from the list to the radar plan view, and **Left** again to switch back.
+
+The plot is drawn from your home location outward, oriented so that north is up:
+
+- **Three range rings**, evenly spaced. The outer ring is labelled with your search radius (for example `30mi`), and the inner rings with the distances they represent.
+- A **crosshair** marked **N**, **S**, **E** and **W**, with your home location as a small square at the centre.
+- One **arrow-shaped marker** per aircraft, positioned by distance and bearing and rotated to point along the aircraft's heading. Aircraft that do not report a heading are drawn pointing straight up.
+- The **selected aircraft** is drawn larger and circled.
+
+Below the plot, a readout shows the selected aircraft's callsign, distance and bearing, and altitude. Use **Right** (or **Volume Down**) to step through the aircraft; the ring and the readout follow the selection. Press **Confirm** to open the selected aircraft's detail screen.
+
+#### Aircraft Detail
+
+The detail screen is titled with the aircraft's callsign and lists everything known about it. Fields the aircraft does not broadcast are simply left out:
+
+| Field              | Notes                                                                |
+| ------------------ | -------------------------------------------------------------------- |
+| **Altitude**       | In feet.                                                             |
+| **Speed**          | In mph.                                                              |
+| **Heading**        | In degrees, with the matching compass point.                         |
+| **Vertical rate**  | Shown as "Climbing", "Descending" or "Level flight".                 |
+| **Distance**       | Distance and bearing from your home location.                        |
+| **Origin**         | The country that registered the aircraft, as reported by OpenSky.    |
+| **ICAO24**         | The aircraft's unique 24-bit transponder address.                    |
+| **Type**           | Manufacturer and ICAO type code, looked up on demand (see below).    |
+| **Reg**            | The aircraft's registration, from the same lookup.                   |
+| **As of**          | How long ago the flight data on screen was fetched.                  |
+
+Opening this screen triggers a single lookup against adsbdb for that one aircraft, so the **Type** and **Reg** lines can take a moment to appear. Until the answer arrives the type line reads "Type: checking...". If adsbdb has no record for the aircraft it reads "Type: unknown", and if the lookup could not be completed it reads "Type: unavailable" - that one is retried the next time you open the aircraft. Successful lookups are remembered until you leave the Nearby Flights screen, so going back and forth to the same aircraft does not repeat the request.
+
+Everything except the type and registration comes from the snapshot taken by the last fetch and does not update while you read it; the "As of" line is how old that snapshot is. Press **Back** to return to whichever view you came from - the list or the radar.
+
+#### Wi-Fi, Refreshing and Errors
+
+Nearby Flights needs a Wi-Fi connection. If the device is not already connected when you open the screen (or when you **Refresh**), the Wi-Fi network picker opens so you can join one of your saved networks. See **[Wi-Fi Networks](#364-system)** in the System settings for managing those.
+
+If a network is not joined, or the flight data cannot be fetched, the screen shows an error:
+
+- "Error: Wi-Fi connection failed" - no network was joined.
+- "Error: Failed to fetch flight data" - the request could not be completed, or the reply could not be read. OpenSky is a free public service and is occasionally slow or unavailable; trying again shortly usually works.
+
+Press **Confirm** to retry from an error screen, or **Back** to return Home.
+
+> [!NOTE]
+> When you leave Nearby Flights, the device disconnects from Wi-Fi and performs a silent restart to release the memory the radio used. The screen blanks briefly and returns straight to the Home screen without the usual boot splash. This is expected, not a crash.
 
 ---
 
