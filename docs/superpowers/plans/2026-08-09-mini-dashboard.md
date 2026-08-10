@@ -1574,7 +1574,7 @@ git commit -m "feat: add the flights-overhead source"
 - Create: `scripts/dashboard/tests/test_render.py`
 
 **Interfaces:**
-- Consumes: every dataclass from Tasks 3–5, plus `Config`.
+- Consumes: the dataclasses from Tasks 3–5. **Not `Config`** — the fetchers already bake display-ready units and place names into their dataclasses, so the renderer never needs it.
 - Produces:
   - `CSS: str` — the stylesheet, embedded by `deliver.py`
   - `render_weather(fetched: Fetched[Forecast], generated: datetime.datetime) -> str`
@@ -1701,14 +1701,53 @@ def test_flights_with_nothing_overhead_says_so():
     assert "Nothing overhead" in html
 
 
+def test_news_renders_an_empty_feed_as_empty_not_as_failure():
+    # max_per_feed=0, or a feed whose entries all lack titles, yields
+    # headlines=[] with error=None. That is not a failure.
+    digest = Fetched(value=NewsDigest(feeds=[FeedResult(name="Quiet", headlines=[])]))
+    html = render_news(digest, GENERATED)
+    assert "Quiet" in html
+    assert "Unavailable" not in html
+    assert "feed-error" not in html
+
+
+def test_flights_renders_unknown_altitude_and_speed_as_dashes():
+    # An aircraft with a known position but unknown altitude is deliberately
+    # kept by parse_states rather than dropped.
+    snapshot = Fetched(
+        value=FlightSnapshot(
+            place="Lisbon",
+            radius_miles=25.0,
+            aircraft=[Aircraft("NOALT1", "Ireland", None, None, 4.2, "NE")],
+        )
+    )
+    html = render_flights(snapshot, GENERATED)
+    assert "NOALT1" in html
+    assert "None" not in html
+    assert html.count("—") >= 2
+
+
 def test_every_renderer_returns_a_fragment_not_a_document():
+    news = Fetched(value=NewsDigest(feeds=[FeedResult(name="BBC", headlines=[Headline("A story", None)])]))
+    flights = Fetched(
+        value=FlightSnapshot(
+            place="Lisbon",
+            radius_miles=25.0,
+            aircraft=[Aircraft("RYR4TL", "Ireland", 32808, 450, 4.2, "NE")],
+        )
+    )
     for html in (
         render_weather(FORECAST, GENERATED),
+        render_weather(Fetched(error="x"), GENERATED),
+        render_news(news, GENERATED),
         render_news(Fetched(error="x"), GENERATED),
         render_sky(FORECAST, GENERATED),
+        render_sky(Fetched(error="x"), GENERATED),
+        render_flights(flights, GENERATED),
         render_flights(Fetched(error="x"), GENERATED),
     ):
         assert "<html" not in html
+        assert "<head" not in html
         assert "<body" not in html
 ```
 
@@ -1882,7 +1921,7 @@ def render_flights(fetched: Fetched[FlightSnapshot], generated: dt.datetime) -> 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `.venv/bin/pytest scripts/dashboard/tests/test_render.py -v`
-Expected: PASS, 11 tests
+Expected: PASS, 12 tests
 
 - [ ] **Step 5: Commit**
 
