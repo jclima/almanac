@@ -3,3 +3,7 @@ cairosvg>=2.9.0
 matplotlib>=3.10.9
 pyserial>=3.5
 colorama>=0.4.6
+ebooklib>=0.18
+markdown>=3.5
+feedparser>=6.0.11
+pytest>=8.0
