@@ -660,9 +660,13 @@ Create `scripts/dashboard/tests/test_sources_forecast.py`:
 
 ```python
 import datetime as dt
+import http.client
+import urllib.error
 
 import pytest
 
+from dashboard import sources
+from dashboard.config import Config
 from dashboard.sources import (
     Fetched,
     describe_weather_code,
@@ -689,6 +693,8 @@ PAYLOAD = {
         "sunset": ["2026-08-09T20:31", "2026-08-10T20:30"],
     },
 }
+
+CONFIG = Config(place="Lisbon", lat=38.7223, lon=-9.1393)
 
 
 def test_fetched_ok_is_false_when_errored():
@@ -736,6 +742,12 @@ def test_parse_forecast_tolerates_a_null_precipitation_value():
     assert forecast.days[0].precipitation_chance == 0
 
 
+def test_parse_forecast_rejects_a_non_object_payload():
+    for payload in ([1, 2, 3], "text", 42, None):
+        with pytest.raises(ValueError):
+            parse_forecast(payload, "Lisbon")
+
+
 def test_describe_weather_code_known_and_unknown():
     assert describe_weather_code(0) == "Clear sky"
     assert describe_weather_code(95) == "Thunderstorm"
@@ -759,6 +771,40 @@ def test_moon_phase_fraction_stays_in_range():
     for offset in range(0, 60):
         phase = moon_phase(dt.date(2026, 1, 1) + dt.timedelta(days=offset))
         assert 0.0 <= phase.fraction < 1.0
+
+
+def test_fetch_forecast_survives_a_non_object_payload(monkeypatch):
+    monkeypatch.setattr(sources, "_get_json", lambda url: [1, 2, 3])
+    result = sources.fetch_forecast(CONFIG)
+    assert not result.ok
+    assert "unexpected Open-Meteo response" in result.error
+
+
+def test_fetch_forecast_survives_a_truncated_response(monkeypatch):
+    def truncated(url):
+        raise http.client.IncompleteRead(b"partial")
+
+    monkeypatch.setattr(sources, "_get_json", truncated)
+    result = sources.fetch_forecast(CONFIG)
+    assert not result.ok
+    assert "could not reach Open-Meteo" in result.error
+
+
+def test_fetch_forecast_survives_a_transport_error(monkeypatch):
+    def unreachable(url):
+        raise urllib.error.URLError("no route to host")
+
+    monkeypatch.setattr(sources, "_get_json", unreachable)
+    result = sources.fetch_forecast(CONFIG)
+    assert not result.ok
+    assert "could not reach Open-Meteo" in result.error
+
+
+def test_fetch_forecast_survives_a_malformed_daily_block(monkeypatch):
+    monkeypatch.setattr(sources, "_get_json", lambda url: {"current": PAYLOAD["current"]})
+    result = sources.fetch_forecast(CONFIG)
+    assert not result.ok
+    assert "unexpected Open-Meteo response" in result.error
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -781,9 +827,11 @@ into pure functions so it can be tested without network access.
 from __future__ import annotations
 
 import datetime as dt
+import http.client
 import json
 import math
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from typing import Generic, TypeVar
@@ -891,10 +939,13 @@ class MoonPhase:
 
 
 def _get_json(url: str) -> dict:
-    """GET a URL and decode JSON. Raises on transport or decode failure."""
+    """GET a URL and decode a JSON object. Raises on transport, decode, or shape failure."""
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT_SECONDS) as response:
-        return json.loads(response.read().decode("utf-8"))
+        payload = json.loads(response.read().decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"expected a JSON object, got {type(payload).__name__}")
+    return payload
 
 
 def describe_weather_code(code: int) -> str:
@@ -913,7 +964,12 @@ def moon_phase(day: dt.date) -> MoonPhase:
 
 
 def parse_forecast(payload: dict, place: str) -> Forecast:
-    """Turn an Open-Meteo response into a Forecast. Pure. Raises ValueError."""
+    """Turn an Open-Meteo response into a Forecast. Pure.
+
+    Raises ValueError, KeyError, IndexError or TypeError on a malformed payload.
+    """
+    if not isinstance(payload, dict):
+        raise ValueError(f"expected a JSON object, got {type(payload).__name__}")
     current = payload.get("current")
     daily = payload.get("daily")
     if not isinstance(current, dict) or not isinstance(daily, dict):
@@ -950,26 +1006,28 @@ def parse_forecast(payload: dict, place: str) -> Forecast:
 
 def fetch_forecast(config: Config) -> Fetched[Forecast]:
     """Fetch weather and sun times in one request. Never raises."""
+    temperature_unit = urllib.parse.quote(config.temperature_unit)
+    wind_unit = urllib.parse.quote(config.wind_unit)
     url = (
         f"{OPEN_METEO_URL}?latitude={config.lat:.4f}&longitude={config.lon:.4f}"
         "&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m"
         "&daily=weather_code,temperature_2m_max,temperature_2m_min,"
         "precipitation_probability_max,sunrise,sunset"
         f"&timezone=auto&forecast_days={FORECAST_DAYS}"
-        f"&temperature_unit={config.temperature_unit}&wind_speed_unit={config.wind_unit}"
+        f"&temperature_unit={temperature_unit}&wind_speed_unit={wind_unit}"
     )
     try:
         return Fetched(value=parse_forecast(_get_json(url), config.place))
-    except (urllib.error.URLError, OSError) as exc:
+    except (urllib.error.URLError, OSError, http.client.HTTPException) as exc:
         return Fetched(error=f"could not reach Open-Meteo ({exc})")
-    except (ValueError, KeyError, IndexError, TypeError) as exc:
+    except (ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
         return Fetched(error=f"unexpected Open-Meteo response ({exc})")
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `.venv/bin/pytest scripts/dashboard/tests/test_sources_forecast.py -v`
-Expected: PASS, 11 tests
+Expected: PASS, 15 tests
 
 - [ ] **Step 5: Smoke-test the live fetch**
 
