@@ -48,10 +48,19 @@ jobs:
       - name: Gate A - CI is green on this exact commit
         env:
           GH_TOKEN: ${{ github.token }}
+          SELF_CHECK: ${{ github.job }}
         run: |
           set -euo pipefail
           sha="$(git rev-parse HEAD)"
-          runs="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}/check-runs" --jq '.check_runs[] | "\(.name)=\(.status):\(.conclusion)"')"
+          # Exclude this job's own check run: it is still in_progress with a
+          # null conclusion for the entire duration of this step, so without
+          # this filter Gate A would see itself as an unfinished check and
+          # fail every run, including the first one. Compared against
+          # github.job (not a hardcoded job name) so renaming the job cannot
+          # silently resurrect the bug. The emptiness check below runs on
+          # this already-filtered list, so "CI never started" still fails
+          # correctly instead of being masked by excluding our own entry.
+          runs="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}/check-runs" --jq '.check_runs[] | select(.name != env.SELF_CHECK) | "\(.name)=\(.status):\(.conclusion)"')"
           if [ -z "${runs}" ]; then
             echo "::error::No check runs found for ${sha}. CI has probably not started; refusing to release."
             exit 1
@@ -96,7 +105,7 @@ jobs:
           git tag "${{ steps.train.outputs.tag }}"
           # Commit and tag together: if this fails because another push landed
           # first, no tag reaches the remote and re-running is safe.
-          git push origin HEAD "${{ steps.train.outputs.tag }}"
+          git push --atomic origin HEAD "${{ steps.train.outputs.tag }}"
 
       - name: Remind about the README prose
         if: ${{ inputs.dry_run != true }}
