@@ -55,11 +55,12 @@ automatic.
 ## The workflow
 
 One new file, `.github/workflows/release-train.yml`, `workflow_dispatch`, with
-three inputs:
+four inputs:
 
 | Input | Type | Default | Purpose |
 |---|---|---|---|
 | `bump` | choice: `patch`/`minor`/`major` | `patch` | Which component to increment |
+| `allow_any_ref` | boolean | `false` | Override for the branch gate (Gate 0) |
 | `allow_docs_only` | boolean | `false` | Override for the docs-only gate |
 | `dry_run` | boolean | `false` | Compute and print everything; push nothing |
 
@@ -155,10 +156,17 @@ permissions:
 `contents: write` covers the `GITHUB_TOKEN` used for API reads; the push
 itself uses `RELEASE_TRAIN_TOKEN` for the reason above.
 
-**There is deliberately no branch restriction.** The workflow releases whatever
-ref it was dispatched against — normally `develop`, chosen in the Actions UI.
-A branch gate was considered and declined; `workflow_dispatch` already makes
-the ref an explicit, visible choice at press time.
+**Gate 0 restricts the ref to `develop`, with an `allow_any_ref` escape
+hatch.** A branch gate was originally considered and declined, on the
+reasoning that `workflow_dispatch` already makes the ref an explicit,
+visible choice at press time. That reasoning missed a hole: `ci.yml` also
+runs on `pull_request`, so a PR branch with green CI clears Gate A even
+though its commits never merged into `develop`, and Gate B then passes
+trivially too, since a diverged branch differs from the last tag by
+construction. Dispatching against that branch would publish a real release,
+built from unmerged code, over OTA. Gate 0 now refuses any ref other than
+`refs/heads/develop` unless `allow_any_ref` is set, for the rare case where
+releasing from somewhere else is genuinely intended.
 
 ## Release notes
 
@@ -199,13 +207,14 @@ plausible-sounding but wrong upgrade instruction is worse than a stale one.
 
 | Situation | Behaviour |
 |---|---|
+| Dispatched against a ref other than `develop` | Gate 0 fails before checkout, unless `allow_any_ref` is set |
 | CI red, running, or absent on the SHA | Gate A fails before anything is written |
 | Only docs changed since the last tag | Gate B fails unless overridden |
 | Target tag already exists | Fails at step 6, before any commit |
 | Another session pushes mid-run | The push fails; **no tag was created**, so re-running is safe |
-| `platformio.ini` and tag disagree | Impossible by construction — one step writes both — and `release.yml` still checks |
+| `platformio.ini` and tag disagree | Impossible from a single run of this workflow — one step writes both — but reachable by deleting a tag by hand without also reverting the commit; see the recovery below |
 | `RELEASE_TRAIN_TOKEN` missing or expired | Fails at the first step, before any file is written (see the token section) |
-| Tag pushed but `release.yml` never ran | Should be unreachable once the token is right. Recovery is to delete the tag and re-run, **not** to re-push the same tag — `release.yml` publishes from the tag, and a deleted-and-recreated tag is the only way to retry cleanly |
+| Tag pushed but `release.yml` never ran, or a published release must be rolled back | Delete the tag, delete the GitHub Release if one was published, and revert the `release: X.Y.Z` commit on `develop` — then re-run. Do **not** just delete the tag, and do **not** re-push the same tag: `release.yml` publishes from the tag itself, so a deleted-and-recreated tag is the only way to retry cleanly. The revert matters beyond that: it is what brings `platformio.ini` back into agreement with the last tag (exactly what the half-done-release guard above checks), and it removes the commit's drafted `docs/release-notes/<tag>.md`, which is what lets a corrected draft be generated instead of retrying with the same file |
 
 The push-race case is the one worth designing for rather than hoping about:
 several parallel sessions pushed to `develop` during this spec's own authoring.

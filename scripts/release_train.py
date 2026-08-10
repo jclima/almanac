@@ -14,7 +14,9 @@ import sys
 TAG_PREFIX = "almanac-v"
 # Ours only. The repository also carries CrossPoint's inherited tags
 # (0.4.0 - 1.5.0), which must never be treated as a release of this fork.
-TAG_RE = re.compile(rf"^(?:{re.escape(TAG_PREFIX)})?(\d+)\.(\d+)\.(\d+)$")
+# The prefix is mandatory here (not optional): the regex alone must keep
+# a bare "1.5.0" out, since callers other than latest_tag() rely on it too.
+TAG_RE = re.compile(rf"^{re.escape(TAG_PREFIX)}(\d+)\.(\d+)\.(\d+)$")
 
 
 def parse_version(tag):
@@ -31,7 +33,7 @@ def latest_tag(tags):
     Numeric, not lexical: sorted() on the strings puts almanac-v1.0.10 before
     almanac-v1.0.9, which would silently re-release an older version.
     """
-    ours = [(parse_version(t), t) for t in tags if t.startswith(TAG_PREFIX)]
+    ours = [(parse_version(t), t) for t in tags]
     ours = [(v, t) for v, t in ours if v is not None]
     if not ours:
         return None
@@ -49,8 +51,9 @@ def next_version(current, bump):
     raise ValueError(f"unknown bump: {bump!r}")
 
 
-# Only the [almanac] section's version. platformio.ini has other `version =`
-# keys (platform pins), and rewriting one of those would change the build.
+# Anchored to [almanac] so that a `version =` added later under any other
+# section cannot be rewritten by accident; today there is exactly one, at
+# line 7.
 PIO_VERSION_RE = re.compile(r"(?m)^(\[almanac\]\n(?:(?!\[).*\n)*?version[ \t]*=[ \t]*)(\S+)")
 README_VERSION_RE = re.compile(r"(?m)^\*\*Version \d+\.\d+\.\d+\*\*")
 
@@ -147,7 +150,8 @@ def main(argv=None):
         found = ini_version.group(2) if ini_version else "<none>"
         print(
             f"error: platformio.ini says {found} but the last tag is {previous}; "
-            "resolve that before releasing",
+            "if a release was rolled back, revert its 'release:' commit on "
+            "develop (this also removes its drafted notes file) before re-running",
             file=sys.stderr,
         )
         return 1

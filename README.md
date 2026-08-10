@@ -230,14 +230,23 @@ before.
 > failure would look like success.
 
 **To run it:** Actions tab → **Release Train** → Run workflow. Leave the
-branch on `develop` unless you mean to release something else, and pick
-`patch`/`minor`/`major`. If you're not sure the moment is right, tick
-`dry_run` first — it runs both gates below and prints the plan (previous tag,
-next tag, commit count, and whether it will keep your hand-written release
-notes or draft one) without writing or pushing anything.
+branch on `develop` — Gate 0 refuses any other ref unless `allow_any_ref` is
+also ticked, since without it a PR branch can otherwise clear the other two
+gates on commits that never merged — and pick `patch`/`minor`/`major`. If
+you're not sure the moment is right, tick `dry_run` first — it runs all
+three gates below and prints the plan (previous tag, next tag, commit count,
+and whether it will keep your hand-written release notes or draft one)
+without writing or pushing anything.
 
-Two gates run before anything is touched, and each names itself in its error:
+Three gates run before anything is touched, and each names itself in its error:
 
+- **Gate 0** — refuses unless the dispatched ref is `develop` (`Release
+  Train must be dispatched against develop`). `ci.yml` also runs on
+  `pull_request`, so without this gate a PR branch with green CI could clear
+  Gate A on commits that never merged into `develop`, and Gate B would pass
+  trivially too against that diverged branch. The escape hatch,
+  `allow_any_ref`, exists for the rare case where releasing from somewhere
+  else is genuinely intended — leave it off by default.
 - **Gate A** — refuses unless every check run on the exact commit being
   released completed successfully. Two messages, two different fixes:
   `No check runs found for <sha>` means CI simply hasn't started yet — wait
@@ -257,9 +266,17 @@ Two gates run before anything is touched, and each names itself in its error:
 
 Three more checks run just before anything is written, each naming the
 problem: the target tag already existing, `platformio.ini`'s version
-disagreeing with the last tag (a half-finished manual release), and
-README.md missing its `**Version X.Y.Z**` marker. Resolve whatever it names
-and re-run.
+disagreeing with the last tag, and README.md missing its `**Version
+X.Y.Z**` marker. Resolve whatever it names and re-run.
+
+The `platformio.ini`-disagrees-with-the-last-tag case is usually a release
+that was rolled back, not a manual edit. Recovery is the same as for a tag
+whose release never published: delete the tag, delete the GitHub Release if
+one was published, and revert the `release: X.Y.Z` commit on `develop`, then
+re-run. Do not just delete the tag — the revert is what brings
+`platformio.ini` back into agreement with the last tag, and it also removes
+the commit's drafted `docs/release-notes/almanac-vX.Y.Z.md`, which is what
+lets a corrected draft be generated on retry.
 
 Release notes are generated from the commit log **only when**
 `docs/release-notes/almanac-vX.Y.Z.md` doesn't already exist. To ship your

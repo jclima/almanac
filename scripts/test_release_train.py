@@ -23,8 +23,13 @@ def check(label, got, want):
 
 def main():
     check("parse almanac tag", parse_version("almanac-v1.2.3"), (1, 2, 3))
-    check("parse bare version", parse_version("1.2.3"), (1, 2, 3))
-    check("reject inherited tag", parse_version("v1.5.0"), None)
+    # The prefix is mandatory: a bare majority-form tag must be rejected, not
+    # just filtered out downstream by latest_tag(). 1.5.0 is the newest of
+    # CrossPoint's inherited tags, so it is the realistic trap case.
+    check("reject bare inherited tag", parse_version("1.5.0"), None)
+    # Different reason than the bare case above: this is rejected for its
+    # leading "v", not for being one of the inherited tags.
+    check("reject stray v prefix", parse_version("v1.5.0"), None)
     check("reject junk", parse_version("almanac-vX.Y.Z"), None)
 
     # The bug this test exists for: lexical sorting puts 1.0.10 before 1.0.9.

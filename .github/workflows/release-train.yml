@@ -10,6 +10,10 @@ on:
         type: choice
         options: [patch, minor, major]
         default: patch
+      allow_any_ref:
+        description: Release even if the dispatched ref is not develop
+        type: boolean
+        default: false
       allow_docs_only:
         description: Release even if only docs changed since the last tag
         type: boolean
@@ -40,6 +44,20 @@ jobs:
             exit 1
           fi
 
+      # Gate A (below) only checks that CI is green on this commit, but
+      # ci.yml also triggers on pull_request -- so a PR branch with green CI
+      # clears Gate A even though its commits never merged into develop.
+      # Gate B then passes trivially too, since a diverged branch differs
+      # from the last tag by construction. Nothing downstream can tell that
+      # apart from a real develop release, so refuse here -- before
+      # checkout, as early as possible -- unless the ref is develop or the
+      # operator explicitly opts out.
+      - name: Gate 0 - releasing from develop
+        if: ${{ github.ref != 'refs/heads/develop' && inputs.allow_any_ref != true }}
+        run: |
+          echo "::error::Release Train must be dispatched against develop (got ${{ github.ref_name }}). CI runs on pull_request, so a PR branch can pass the CI gate and publish firmware built from unmerged code. Re-run with allow_any_ref only if you genuinely mean to release from this ref."
+          exit 1
+
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0 # tags and full history: the script needs both
@@ -56,9 +74,15 @@ jobs:
           # null conclusion for the entire duration of this step, so without
           # this filter Gate A would see itself as an unfinished check and
           # fail every run, including the first one. Compared against
-          # github.job (not a hardcoded job name) so renaming the job cannot
-          # silently resurrect the bug. The emptiness check below runs on
-          # this already-filtered list, so "CI never started" still fails
+          # github.job (not a hardcoded job name), so renaming the job id
+          # cannot silently resurrect the bug -- but github.job always
+          # returns the id, never the check run's displayed name. The two
+          # happen to match today only because this job has no `name:`
+          # override. Do NOT add one: with e.g. `name: Cut Release`, the
+          # check run becomes "Cut Release" while SELF_CHECK still holds
+          # "cut-release", the filter stops matching, and Gate A fails on
+          # every run again. The emptiness check below runs on this
+          # already-filtered list, so "CI never started" still fails
           # correctly instead of being masked by excluding our own entry.
           runs="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}/check-runs" --jq '.check_runs[] | select(.name != env.SELF_CHECK) | "\(.name)=\(.status):\(.conclusion)"')"
           if [ -z "${runs}" ]; then
