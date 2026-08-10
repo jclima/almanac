@@ -8,9 +8,11 @@ into pure functions so it can be tested without network access.
 from __future__ import annotations
 
 import datetime as dt
+import http.client
 import json
 import math
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from typing import Generic, TypeVar
@@ -118,10 +120,13 @@ class MoonPhase:
 
 
 def _get_json(url: str) -> dict:
-    """GET a URL and decode JSON. Raises on transport or decode failure."""
+    """GET a URL and decode a JSON object. Raises on transport, decode, or shape failure."""
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT_SECONDS) as response:
-        return json.loads(response.read().decode("utf-8"))
+        payload = json.loads(response.read().decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"expected a JSON object, got {type(payload).__name__}")
+    return payload
 
 
 def describe_weather_code(code: int) -> str:
@@ -140,7 +145,12 @@ def moon_phase(day: dt.date) -> MoonPhase:
 
 
 def parse_forecast(payload: dict, place: str) -> Forecast:
-    """Turn an Open-Meteo response into a Forecast. Pure. Raises ValueError."""
+    """Turn an Open-Meteo response into a Forecast. Pure.
+
+    Raises ValueError, KeyError, IndexError or TypeError on a malformed payload.
+    """
+    if not isinstance(payload, dict):
+        raise ValueError(f"expected a JSON object, got {type(payload).__name__}")
     current = payload.get("current")
     daily = payload.get("daily")
     if not isinstance(current, dict) or not isinstance(daily, dict):
@@ -177,17 +187,19 @@ def parse_forecast(payload: dict, place: str) -> Forecast:
 
 def fetch_forecast(config: Config) -> Fetched[Forecast]:
     """Fetch weather and sun times in one request. Never raises."""
+    temperature_unit = urllib.parse.quote(config.temperature_unit)
+    wind_unit = urllib.parse.quote(config.wind_unit)
     url = (
         f"{OPEN_METEO_URL}?latitude={config.lat:.4f}&longitude={config.lon:.4f}"
         "&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m"
         "&daily=weather_code,temperature_2m_max,temperature_2m_min,"
         "precipitation_probability_max,sunrise,sunset"
         f"&timezone=auto&forecast_days={FORECAST_DAYS}"
-        f"&temperature_unit={config.temperature_unit}&wind_speed_unit={config.wind_unit}"
+        f"&temperature_unit={temperature_unit}&wind_speed_unit={wind_unit}"
     )
     try:
         return Fetched(value=parse_forecast(_get_json(url), config.place))
-    except (urllib.error.URLError, OSError) as exc:
+    except (urllib.error.URLError, OSError, http.client.HTTPException) as exc:
         return Fetched(error=f"could not reach Open-Meteo ({exc})")
-    except (ValueError, KeyError, IndexError, TypeError) as exc:
+    except (ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
         return Fetched(error=f"unexpected Open-Meteo response ({exc})")
