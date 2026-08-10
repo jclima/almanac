@@ -114,3 +114,72 @@ def render_notes(version, groups):
         out.extend(f"- {item}" for item in groups["other"])
         out.append("")
     return "\n".join(out).rstrip() + "\n"
+
+
+def git(*args):
+    return subprocess.run(["git", *args], check=True, capture_output=True, text=True).stdout
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Cut a release: bump, draft notes, stage.")
+    parser.add_argument("--bump", choices=["major", "minor", "patch"], required=True)
+    parser.add_argument("--dry-run", action="store_true", help="print the plan, write nothing")
+    args = parser.parse_args(argv)
+
+    tags = git("tag", "--list", f"{TAG_PREFIX}*").split()
+    previous = latest_tag(tags)
+    if previous is None:
+        print("error: no almanac-v* tag found; cannot compute the next version", file=sys.stderr)
+        return 1
+
+    version = next_version(parse_version(previous), args.bump)
+    tag = f"{TAG_PREFIX}{version}"
+    if tag in tags:
+        print(f"error: {tag} already exists", file=sys.stderr)
+        return 1
+
+    # platformio.ini must already agree with the last tag. If it does not, a
+    # previous release was left half-done and bumping from the tag would
+    # produce a version that skips or repeats one.
+    ini_text = open("platformio.ini").read()
+    ini_version = PIO_VERSION_RE.search(ini_text)
+    if ini_version is None or ini_version.group(2) != previous[len(TAG_PREFIX):]:
+        found = ini_version.group(2) if ini_version else "<none>"
+        print(
+            f"error: platformio.ini says {found} but the last tag is {previous}; "
+            "resolve that before releasing",
+            file=sys.stderr,
+        )
+        return 1
+
+    subjects = git("log", "--no-merges", "--format=%s", f"{previous}..HEAD").splitlines()
+    notes_path = os.path.join("docs", "release-notes", f"{tag}.md")
+    notes_exist = os.path.exists(notes_path)
+
+    print(f"previous: {previous}")
+    print(f"next:     {tag}")
+    print(f"commits:  {len(subjects)}")
+    print(f"notes:    {'keeping existing ' + notes_path if notes_exist else 'drafting ' + notes_path}")
+
+    if args.dry_run:
+        print("dry run: nothing written")
+        return 0
+
+    open("platformio.ini", "w").write(bump_platformio(ini_text, version))
+    readme_text = open("README.md").read()
+    open("README.md", "w").write(bump_readme(readme_text, version))
+    # Hand-written notes always win. This is what lets a release that deserves
+    # real prose get it, without the button needing a second step.
+    if not notes_exist:
+        os.makedirs(os.path.dirname(notes_path), exist_ok=True)
+        open(notes_path, "w").write(render_notes(version, group_commits(subjects)))
+
+    github_output = os.environ.get("GITHUB_OUTPUT")
+    if github_output:
+        with open(github_output, "a") as handle:
+            handle.write(f"version={version}\ntag={tag}\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
