@@ -5,6 +5,12 @@ from __future__ import annotations
 import datetime as dt
 import io
 import re
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
+from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 
 from ebooklib import epub
@@ -142,3 +148,68 @@ def build_epub(
 
     epub.write_epub(str(out_path), book)
     return out_path
+
+
+UPLOAD_TIMEOUT_SECONDS = 60
+UPLOAD_FIELD_NAME = "file"
+
+
+class UploadStatus(str, Enum):
+    UPLOADED = "uploaded"
+    UNREACHABLE = "unreachable"
+    REJECTED = "rejected"
+
+
+@dataclass(frozen=True)
+class UploadResult:
+    status: UploadStatus
+    detail: str
+
+
+def encode_multipart(field_name: str, filename: str, payload: bytes, boundary: str) -> bytes:
+    """Build a multipart/form-data body. Stdlib only — no HTTP client dependency."""
+    return b"".join(
+        [
+            f"--{boundary}\r\n".encode(),
+            f'Content-Disposition: form-data; name="{field_name}"; filename="{filename}"\r\n'.encode(),
+            b"Content-Type: application/epub+zip\r\n\r\n",
+            payload,
+            f"\r\n--{boundary}--\r\n".encode(),
+        ]
+    )
+
+
+def curl_hint(epub_path: Path, host: str, remote_dir: str) -> str:
+    """The exact command to push the file later, for when the device is offline."""
+    return (
+        f'curl -X POST -F "file=@{epub_path}" '
+        f'"http://{host}/upload?path={remote_dir}"'
+    )
+
+
+def upload(epub_path: Path, host: str, remote_dir: str) -> UploadResult:
+    """POST the EPUB to the device. Never raises."""
+    boundary = uuid.uuid4().hex
+    body = encode_multipart(UPLOAD_FIELD_NAME, epub_path.name, epub_path.read_bytes(), boundary)
+    url = f"http://{host}/upload?path={urllib.parse.quote(remote_dir)}"
+
+    request = urllib.request.Request(
+        url,
+        data=body,
+        method="POST",
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=UPLOAD_TIMEOUT_SECONDS) as response:
+            return UploadResult(
+                status=UploadStatus.UPLOADED,
+                detail=response.read().decode("utf-8", errors="replace").strip(),
+            )
+    except urllib.error.HTTPError as exc:
+        return UploadResult(
+            status=UploadStatus.REJECTED,
+            detail=f"HTTP {exc.code}: {exc.read().decode('utf-8', errors='replace').strip()}",
+        )
+    except (urllib.error.URLError, OSError) as exc:
+        return UploadResult(status=UploadStatus.UNREACHABLE, detail=str(exc))
