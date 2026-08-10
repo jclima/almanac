@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime as dt
 import http.client
+import io
 import json
 import math
 import urllib.error
@@ -16,6 +17,8 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from typing import Generic, TypeVar
+
+import feedparser
 
 from .config import Config
 
@@ -203,3 +206,66 @@ def fetch_forecast(config: Config) -> Fetched[Forecast]:
         return Fetched(error=f"could not reach Open-Meteo ({exc})")
     except (ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
         return Fetched(error=f"unexpected Open-Meteo response ({exc})")
+
+
+@dataclass(frozen=True)
+class Headline:
+    title: str
+    published: dt.datetime | None
+
+
+@dataclass(frozen=True)
+class FeedResult:
+    name: str
+    headlines: list[Headline]
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class NewsDigest:
+    feeds: list[FeedResult]
+
+
+def _entry_published(entry) -> dt.datetime | None:
+    parsed = getattr(entry, "published_parsed", None) or getattr(entry, "updated_parsed", None)
+    if not parsed:
+        return None
+    return dt.datetime(*parsed[:6], tzinfo=dt.timezone.utc)
+
+
+def parse_feed(name: str, raw_xml: str, limit: int) -> FeedResult:
+    """Turn feed XML into a FeedResult. Pure — no network. Never raises."""
+    # Encode to bytes: feedparser treats some bare strings as locations and
+    # warns about string input in 6.x.
+    parsed = feedparser.parse(io.BytesIO(raw_xml.encode("utf-8")))
+    entries = getattr(parsed, "entries", [])
+    if not entries:
+        reason = "no items" if not getattr(parsed, "bozo", False) else "could not be parsed"
+        return FeedResult(name=name, headlines=[], error=reason)
+
+    headlines = [
+        Headline(title=str(entry.get("title", "")).strip(), published=_entry_published(entry))
+        for entry in entries[:limit]
+    ]
+    return FeedResult(name=name, headlines=[h for h in headlines if h.title])
+
+
+def _fetch_text(url: str) -> str:
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT_SECONDS) as response:
+        return response.read().decode("utf-8", errors="replace")
+
+
+def fetch_news(config: Config) -> Fetched[NewsDigest]:
+    """Fetch every configured feed. One feed failing does not fail the rest."""
+    if not config.feeds:
+        return Fetched(error="no feeds configured")
+
+    results: list[FeedResult] = []
+    for feed in config.feeds:
+        try:
+            results.append(parse_feed(feed.name, _fetch_text(feed.url), config.max_per_feed))
+        except (urllib.error.URLError, OSError, http.client.HTTPException, ValueError) as exc:
+            results.append(FeedResult(name=feed.name, headlines=[], error=f"unreachable ({exc})"))
+
+    return Fetched(value=NewsDigest(feeds=results))
