@@ -36,7 +36,8 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 | File | Responsibility | Created in |
 |---|---|---|
-| `scripts/__init__.py` | Makes `scripts` importable so `python -m scripts.dashboard` works. Empty. | Task 1 |
+| `scripts/generate_dashboard_epub.py` | Flat entry point, matching the `generate_*_epub.py` family. Puts `scripts/` on `sys.path` and calls `dashboard.__main__.main()` | Task 1 |
+| `pytest.ini` | Puts `scripts/` on the test path so tests import `dashboard.*` | Task 1 |
 | `scripts/dashboard/__init__.py` | Package marker. Empty. | Task 1 |
 | `scripts/dashboard/config.py` | Load, validate, and default the JSON config | Task 1 |
 | `scripts/dashboard/geo.py` | Pure great-circle math, mirroring `lib/Geo/GeoMath.cpp` | Task 2 |
@@ -51,12 +52,14 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 **Deviation from the spec, applied in Task 2:** the spec's module table lists five modules. Implementation adds a sixth, `geo.py`, so the pure great-circle helpers are testable without importing the network module. Task 2 updates the spec table to match.
 
+**Why a flat launcher instead of `python -m scripts.dashboard`:** running the package that way needs a `scripts/__init__.py`, which would make `scripts` a Python package. [platformio.ini:118](../../../platformio.ini) and `:225` load five build hooks from that same directory by path (`pre:scripts/build_html.py` and friends). SCons exec's those rather than importing them, so an `__init__.py` is almost certainly inert — but "almost certainly" is not worth a build-system regression on a plan whose first constraint is *no firmware change*. The flat launcher removes the question entirely and matches how every other script in `scripts/` is invoked.
+
 ---
 
 ### Task 1: Package skeleton, dependencies, and config loading
 
 **Files:**
-- Create: `scripts/__init__.py`
+- Create: `pytest.ini`
 - Create: `scripts/dashboard/__init__.py`
 - Create: `scripts/dashboard/config.py`
 - Create: `scripts/dashboard/tests/__init__.py`
@@ -85,14 +88,20 @@ Then install:
 .venv/bin/pip install -r requirements.txt
 ```
 
-- [ ] **Step 2: Create the empty package markers**
+- [ ] **Step 2: Create the package markers and the pytest config**
 
-`scripts/__init__.py` and `scripts/dashboard/__init__.py` and `scripts/dashboard/tests/__init__.py` are all empty files.
-
-`scripts/__init__.py` makes `python -m scripts.dashboard` resolve from the repo root. Existing scripts are executed directly by path (`python3 scripts/gen_i18n.py …`) and by PlatformIO's `extra_scripts`, neither of which is affected by the presence of an `__init__.py`.
+`scripts/dashboard/__init__.py` and `scripts/dashboard/tests/__init__.py` are empty files. **Do not create `scripts/__init__.py`** — see the note above the task list.
 
 ```bash
-touch scripts/__init__.py scripts/dashboard/__init__.py scripts/dashboard/tests/__init__.py
+touch scripts/dashboard/__init__.py scripts/dashboard/tests/__init__.py
+```
+
+Create `pytest.ini` at the repository root. `pythonpath` is what lets tests write `from dashboard.config import …` without `scripts` being a package (pytest 7+; `pytest>=8` is pinned in Step 1):
+
+```ini
+[pytest]
+pythonpath = scripts
+testpaths = scripts/dashboard/tests
 ```
 
 - [ ] **Step 3: Write the failing tests**
@@ -105,7 +114,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.dashboard.config import ConfigError, load_config
+from dashboard.config import ConfigError, load_config
 
 MINIMAL = {"location": {"name": "Lisbon", "lat": 38.7223, "lon": -9.1393}}
 
@@ -177,7 +186,7 @@ def test_feed_without_url_names_the_key(tmp_path):
 - [ ] **Step 4: Run the tests to verify they fail**
 
 Run: `.venv/bin/pytest scripts/dashboard/tests/test_config.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.dashboard.config'`
+Expected: FAIL — `ModuleNotFoundError: No module named 'dashboard.config'`
 
 - [ ] **Step 5: Write the implementation**
 
@@ -323,9 +332,19 @@ Expected: `scripts/dashboard.config.local.json` does **not** appear (matched by 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add scripts/__init__.py scripts/dashboard/ scripts/dashboard.config.example.json scripts/requirements.txt
+git add pytest.ini scripts/dashboard/ scripts/dashboard.config.example.json scripts/requirements.txt
 git commit -m "feat: add dashboard package skeleton and config loading"
 ```
+
+- [ ] **Step 10: Confirm the PlatformIO build hooks are untouched**
+
+Nothing in this task creates `scripts/__init__.py`, so the five `pre:`/`post:` hooks at [platformio.ini:118](../../../platformio.ini) are unaffected. Verify no stray file appeared:
+
+```bash
+test ! -e scripts/__init__.py && echo "ok: scripts is not a package"
+```
+
+Expected: `ok: scripts is not a package`
 
 ---
 
@@ -349,7 +368,7 @@ Create `scripts/dashboard/tests/test_geo.py`:
 ```python
 import pytest
 
-from scripts.dashboard.geo import (
+from dashboard.geo import (
     bounding_box,
     compass_point,
     distance_miles,
@@ -410,15 +429,23 @@ def test_bounding_box_longitude_span_widens_with_latitude():
 
 
 def test_bounding_box_guards_near_the_pole():
-    # milesPerDegreeLon is clamped to 1.0, so the span stays finite.
+    # The clamp fires only when 69*cos(lat) < 1, i.e. above ~89.17 degrees.
+    # There, lon_span = 25/1.0, so the full span is 50 degrees.
     box = bounding_box(89.9999, 0.0, 25.0)
     assert box.lon_max - box.lon_min == pytest.approx(50.0)
+
+
+def test_bounding_box_does_not_clamp_below_the_guard_latitude():
+    # Proves the previous test is exercising the clamp rather than passing by
+    # accident: at 80 degrees, 69*cos(80) is ~11.98, well above the 1.0 floor.
+    box = bounding_box(80.0, 0.0, 25.0)
+    assert box.lon_max - box.lon_min == pytest.approx(4.174, abs=0.01)
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `.venv/bin/pytest scripts/dashboard/tests/test_geo.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.dashboard.geo'`
+Expected: FAIL — `ModuleNotFoundError: No module named 'dashboard.geo'`
 
 - [ ] **Step 3: Write the implementation**
 
@@ -500,7 +527,7 @@ def bounding_box(lat: float, lon: float, radius_miles: float) -> BoundingBox:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `.venv/bin/pytest scripts/dashboard/tests/test_geo.py -v`
-Expected: PASS, 17 tests (7 plain plus 10 parametrized compass cases)
+Expected: PASS, 18 tests (8 plain plus 10 parametrized compass cases)
 
 - [ ] **Step 5: Update the spec's module table**
 
@@ -550,7 +577,7 @@ import datetime as dt
 
 import pytest
 
-from scripts.dashboard.sources import (
+from dashboard.sources import (
     Fetched,
     describe_weather_code,
     moon_phase,
@@ -651,7 +678,7 @@ def test_moon_phase_fraction_stays_in_range():
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `.venv/bin/pytest scripts/dashboard/tests/test_sources_forecast.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.dashboard.sources'`
+Expected: FAIL — `ModuleNotFoundError: No module named 'dashboard.sources'`
 
 - [ ] **Step 3: Write the implementation**
 
@@ -863,10 +890,10 @@ Expected: PASS, 11 tests
 Run:
 
 ```bash
-.venv/bin/python -c "
+PYTHONPATH=scripts .venv/bin/python -c "
 from pathlib import Path
-from scripts.dashboard.config import load_config
-from scripts.dashboard.sources import fetch_forecast
+from dashboard.config import load_config
+from dashboard.sources import fetch_forecast
 cfg = load_config(Path('scripts/dashboard.config.local.json'))
 r = fetch_forecast(cfg)
 print(r.error or r.value.current)
@@ -906,7 +933,7 @@ A single feed failing does not fail the section: its `FeedResult` carries the er
 Create `scripts/dashboard/tests/test_sources_news.py`:
 
 ```python
-from scripts.dashboard.sources import parse_feed
+from dashboard.sources import parse_feed
 
 RSS = """<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"><channel>
@@ -971,6 +998,8 @@ Expected: FAIL — `ImportError: cannot import name 'parse_feed'`
 Add to the imports at the top of `scripts/dashboard/sources.py`:
 
 ```python
+import io
+
 import feedparser
 ```
 
@@ -1004,7 +1033,9 @@ def _entry_published(entry) -> dt.datetime | None:
 
 def parse_feed(name: str, raw_xml: str, limit: int) -> FeedResult:
     """Turn feed XML into a FeedResult. Pure — no network. Never raises."""
-    parsed = feedparser.parse(raw_xml)
+    # Encode to bytes: feedparser treats some bare strings as locations and
+    # warns about string input in 6.x.
+    parsed = feedparser.parse(io.BytesIO(raw_xml.encode("utf-8")))
     entries = getattr(parsed, "entries", [])
     if not entries:
         reason = "no items" if not getattr(parsed, "bozo", False) else "could not be parsed"
@@ -1063,7 +1094,7 @@ git commit -m "feat: add the news headline source"
 - Produces:
   - `Aircraft(callsign: str, origin_country: str, altitude_ft: int | None, speed_kts: int | None, distance_miles: float, bearing: str)`
   - `FlightSnapshot(place: str, radius_miles: float, aircraft: list[Aircraft])`
-  - `parse_states(payload: dict, lat: float, lon: float, radius_miles: float) -> FlightSnapshot` — pure
+  - `parse_states(payload: dict, lat: float, lon: float, radius_miles: float, place: str = "") -> FlightSnapshot` — pure. `place` is threaded through rather than patched in afterwards, so the returned dataclass is always fully initialized.
   - `fetch_flights(config: Config) -> Fetched[FlightSnapshot]` — never raises
 
 OpenSky's `states/all` returns positional arrays. Index meanings used here: 1 callsign, 2 origin country, 5 longitude, 6 latitude, 7 barometric altitude (metres), 8 on-ground flag, 9 velocity (m/s). Entries with no position are skipped; aircraft outside the radius are dropped (the bounding box is square, the radius is round). Anonymous OpenSky access is rate-limited, so this source failing is routine.
@@ -1075,7 +1106,7 @@ Create `scripts/dashboard/tests/test_sources_flights.py`:
 ```python
 import pytest
 
-from scripts.dashboard.sources import MAX_AIRCRAFT, parse_states
+from dashboard.sources import MAX_AIRCRAFT, parse_states
 
 LAT, LON = 38.7223, -9.1393
 
@@ -1151,6 +1182,12 @@ def test_parse_states_tolerates_a_missing_altitude():
 def test_parse_states_falls_back_to_the_icao_when_the_callsign_is_blank():
     entry = state("4ca7b4", "   ", LON + 0.01, LAT)
     assert parse_states({"states": [entry]}, LAT, LON, 25.0).aircraft[0].callsign == "4ca7b4"
+
+
+def test_parse_states_threads_the_place_through():
+    snapshot = parse_states({"states": []}, LAT, LON, 25.0, "Lisbon")
+    assert snapshot.place == "Lisbon"
+    assert snapshot.radius_miles == 25.0
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -1192,7 +1229,9 @@ class FlightSnapshot:
     aircraft: list[Aircraft]
 
 
-def parse_states(payload: dict, lat: float, lon: float, radius_miles: float) -> FlightSnapshot:
+def parse_states(
+    payload: dict, lat: float, lon: float, radius_miles: float, place: str = ""
+) -> FlightSnapshot:
     """Turn an OpenSky states/all response into a FlightSnapshot. Pure."""
     states = payload.get("states") or []
 
@@ -1222,7 +1261,7 @@ def parse_states(payload: dict, lat: float, lon: float, radius_miles: float) -> 
         )
 
     found.sort(key=lambda craft: craft.distance_miles)
-    return FlightSnapshot(place="", radius_miles=radius_miles, aircraft=found[:MAX_AIRCRAFT])
+    return FlightSnapshot(place=place, radius_miles=radius_miles, aircraft=found[:MAX_AIRCRAFT])
 
 
 def fetch_flights(config: Config) -> Fetched[FlightSnapshot]:
@@ -1233,7 +1272,9 @@ def fetch_flights(config: Config) -> Fetched[FlightSnapshot]:
         f"&lamax={box.lat_max:.4f}&lomax={box.lon_max:.4f}"
     )
     try:
-        snapshot = parse_states(_get_json(url), config.lat, config.lon, config.radius_miles)
+        snapshot = parse_states(
+            _get_json(url), config.lat, config.lon, config.radius_miles, config.place
+        )
     except urllib.error.HTTPError as exc:
         if exc.code == 429:
             return Fetched(error="OpenSky rate limit reached")
@@ -1243,17 +1284,13 @@ def fetch_flights(config: Config) -> Fetched[FlightSnapshot]:
     except (ValueError, KeyError, IndexError, TypeError) as exc:
         return Fetched(error=f"unexpected OpenSky response ({exc})")
 
-    return Fetched(
-        value=FlightSnapshot(
-            place=config.place, radius_miles=snapshot.radius_miles, aircraft=snapshot.aircraft
-        )
-    )
+    return Fetched(value=snapshot)
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `.venv/bin/pytest scripts/dashboard/tests/test_sources_flights.py -v`
-Expected: PASS, 10 tests
+Expected: PASS, 11 tests
 
 - [ ] **Step 5: Run the whole suite**
 
@@ -1293,8 +1330,8 @@ Create `scripts/dashboard/tests/test_render.py`:
 ```python
 import datetime as dt
 
-from scripts.dashboard.render import render_flights, render_news, render_sky, render_weather
-from scripts.dashboard.sources import (
+from dashboard.render import render_flights, render_news, render_sky, render_weather
+from dashboard.sources import (
     Aircraft,
     CurrentConditions,
     DayForecast,
@@ -1345,8 +1382,10 @@ def test_weather_shows_the_daily_high_and_low():
 
 
 def test_a_failed_section_renders_the_reason():
+    # Assert on the visible text, not the CSS class name — renaming the class
+    # must not silently gut this test.
     html = render_weather(Fetched(error="could not reach Open-Meteo"), GENERATED)
-    assert "unavailable" in html
+    assert "Unavailable —" in html
     assert "could not reach Open-Meteo" in html
 
 
@@ -1415,7 +1454,7 @@ def test_every_renderer_returns_a_fragment_not_a_document():
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `.venv/bin/pytest scripts/dashboard/tests/test_render.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.dashboard.render'`
+Expected: FAIL — `ModuleNotFoundError: No module named 'dashboard.render'`
 
 - [ ] **Step 3: Write the implementation**
 
@@ -1617,7 +1656,7 @@ Create `scripts/dashboard/tests/test_deliver.py`:
 import datetime as dt
 import zipfile
 
-from scripts.dashboard.deliver import build_epub, make_cover_png
+from dashboard.deliver import build_epub, make_cover_png
 
 GENERATED = dt.datetime(2026, 8, 9, 7, 30)
 SECTIONS = [
@@ -1685,7 +1724,7 @@ def test_build_epub_creates_missing_parent_directories(tmp_path):
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `.venv/bin/pytest scripts/dashboard/tests/test_deliver.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.dashboard.deliver'`
+Expected: FAIL — `ModuleNotFoundError: No module named 'dashboard.deliver'`
 
 - [ ] **Step 3: Write the implementation**
 
@@ -1857,6 +1896,7 @@ git commit -m "feat: add dashboard cover and EPUB packaging"
 **Files:**
 - Modify: `scripts/dashboard/deliver.py` (append)
 - Create: `scripts/dashboard/__main__.py`
+- Create: `scripts/generate_dashboard_epub.py`
 - Create: `scripts/dashboard/tests/test_upload.py`
 - Create: `docs/mini-dashboard.md`
 - Modify: `README.md`
@@ -1882,7 +1922,7 @@ Create `scripts/dashboard/tests/test_upload.py`:
 ```python
 from pathlib import Path
 
-from scripts.dashboard.deliver import curl_hint, encode_multipart
+from dashboard.deliver import curl_hint, encode_multipart
 
 
 def test_multipart_body_has_the_boundary_markers():
@@ -2011,7 +2051,7 @@ Create `scripts/dashboard/__main__.py`:
 ```python
 """Build the dashboard EPUB and push it to the device.
 
-    python3 -m scripts.dashboard
+Invoked through scripts/generate_dashboard_epub.py.
 
 Exit codes: 0 success, 1 every source failed, 2 config error, 3 upload rejected.
 """
@@ -2039,7 +2079,7 @@ EXIT_REJECTED = 3
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(prog="python3 -m scripts.dashboard", description=__doc__)
+    parser = argparse.ArgumentParser(prog="generate_dashboard_epub.py", description=__doc__)
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG, help="config file path")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="where to write the EPUB")
     parser.add_argument("--no-upload", action="store_true", help="build only, do not upload")
@@ -2102,13 +2142,35 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-- [ ] **Step 6: Run the full suite and an end-to-end build**
+- [ ] **Step 6: Create the flat launcher**
+
+Create `scripts/generate_dashboard_epub.py`. This is the entry point users run, named to match the existing `generate_*_epub.py` family. It puts `scripts/` on `sys.path` so `dashboard` imports as a top-level package — which is why no `scripts/__init__.py` is needed.
+
+```python
+#!/usr/bin/env python3
+"""Generate the dashboard EPUB and push it to the device.
+
+See docs/mini-dashboard.md. The implementation lives in scripts/dashboard/.
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from dashboard.__main__ import main  # noqa: E402
+
+if __name__ == "__main__":
+    sys.exit(main())
+```
+
+- [ ] **Step 7: Run the full suite and an end-to-end build**
 
 Run:
 
 ```bash
-.venv/bin/pytest scripts/dashboard/tests -v
-.venv/bin/python -m scripts.dashboard --no-upload
+.venv/bin/pytest -v
+.venv/bin/python scripts/generate_dashboard_epub.py --no-upload
 ```
 
 Expected: all tests pass; the second command prints `built …/build/Dashboard.epub`. Warnings about individual unavailable sources are normal (anonymous OpenSky is rate-limited). Confirm the file exists and is a zip:
@@ -2119,11 +2181,11 @@ Expected: all tests pass; the second command prints `built …/build/Dashboard.e
 
 Expected: `True`
 
-- [ ] **Step 7: Write the user documentation**
+- [ ] **Step 8: Write the user documentation**
 
-Create `docs/mini-dashboard.md`:
+Create `docs/mini-dashboard.md`. The `~~~~` fence below delimits the file body and is **not** part of it — the content contains its own triple-backtick blocks, which is why the outer fence uses tildes. Write everything between the tilde markers, and nothing else.
 
-```markdown
+~~~~
 # Mini Dashboard
 
 A one-glance page — weather, news headlines, sun and moon times, and aircraft
@@ -2167,7 +2229,7 @@ repository.
 2. Run:
 
    ```bash
-   .venv/bin/python -m scripts.dashboard
+   .venv/bin/python scripts/generate_dashboard_epub.py
    ```
 
 3. Open **Dashboard.epub** on the device.
@@ -2196,13 +2258,13 @@ the exact `curl` line to push it later.
 ## Tests
 
 ```bash
-.venv/bin/pytest scripts/dashboard/tests -v
+.venv/bin/pytest -v
 ```
 
 No network access is required — the suite runs against fixture payloads.
-```
+~~~~
 
-- [ ] **Step 8: Link it from the README**
+- [ ] **Step 9: Link it from the README**
 
 `README.md` has no bulleted doc list — it points at `docs/` in a sentence near the end ([README.md:238](../../../README.md)). Extend that sentence rather than inventing a list.
 
@@ -2223,14 +2285,14 @@ host-side weather/news/sky/flights page generator, and [CLAUDE.md](CLAUDE.md)
 for the engineering constraints any change has to respect.
 ```
 
-- [ ] **Step 9: Verify the docs are accurate**
+- [ ] **Step 10: Verify the docs are accurate**
 
 Run each command block from `docs/mini-dashboard.md` in order and confirm it behaves as written. Fix the doc, not your memory of it, if anything differs.
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
-git add scripts/dashboard/deliver.py scripts/dashboard/__main__.py scripts/dashboard/tests/test_upload.py docs/mini-dashboard.md README.md
+git add scripts/dashboard/deliver.py scripts/dashboard/__main__.py scripts/generate_dashboard_epub.py scripts/dashboard/tests/test_upload.py docs/mini-dashboard.md README.md
 git commit -m "feat: add dashboard upload, CLI, and documentation"
 ```
 
@@ -2240,7 +2302,7 @@ git commit -m "feat: add dashboard upload, CLI, and documentation"
 
 These cannot be automated and are the user's to run:
 
-- [ ] Put the X4 into File Transfer mode and run `.venv/bin/python -m scripts.dashboard` with no flags. Confirm it reports `uploaded`.
+- [ ] Put the X4 into File Transfer mode and run `.venv/bin/python scripts/generate_dashboard_epub.py` with no flags. Confirm it reports `uploaded`.
 - [ ] Open `Dashboard.epub` on the device. Confirm the cover shows today's date and the Home tile picks it up.
 - [ ] Page through all four sections. Confirm each starts on its own page and the TOC lists them.
 - [ ] Check the four orientations (Portrait, Inverted, Landscape CW, Landscape CCW).
