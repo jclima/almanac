@@ -41,7 +41,8 @@ network feature.
 |---|---|
 | `scripts/generate_*_epub.py` family | Same `ebooklib` + PIL cover approach, same `scripts/` home |
 | `POST /upload?path=…` | Delivery mechanism, unchanged |
-| `clearBookCache` at [AlmanacWebServer.cpp:787](../../../src/network/AlmanacWebServer.cpp) | Overwriting a fixed filename forces a re-parse, so the render is never stale |
+| `clearBookCache` at [AlmanacWebServer.cpp:1148](../../../src/network/AlmanacWebServer.cpp) | Deleting the old copy forces a re-parse, so the render is never stale |
+| `POST /delete` ([docs/webserver-endpoints.md:179](../../webserver-endpoints.md)) | Clears the previous copy, which the device would otherwise refuse to overwrite |
 | `OpenSkyClient::fetchNearby` at [OpenSkyClient.cpp:16](../../../src/network/OpenSkyClient.cpp) | The script builds the same bounding-box URL, so the page and Nearby Flights agree |
 | `.gitignore` `*.local*` rule ([.gitignore:19](../../../.gitignore)) | Personal config is gitignored automatically, same spirit as `platformio.local.ini` |
 
@@ -155,10 +156,21 @@ breaks; that reads better on e-ink than a section starting mid-page.
 A minimal PIL-generated cover carries the date, so the Home tile shows which day
 is loaded.
 
-The filename is fixed. Because `clearBookCache` runs after upload
-([AlmanacWebServer.cpp:787](../../../src/network/AlmanacWebServer.cpp)),
-overwriting forces a re-parse and resets progress to page 1 — both correct for a
-page that is replaced daily.
+The filename is fixed, and the tool **deletes the previous copy before uploading**.
+
+This was originally specified as a plain overwrite, on the strength of
+`clearBookCache` running after upload. That was wrong, and a code review caught
+it before any hardware test: the device refuses an upload whose target already
+exists ([AlmanacWebServer.cpp:714](../../../src/network/AlmanacWebServer.cpp)
+sets an error that `handleUploadPost` turns into HTTP 400), so the first run
+would have succeeded and every run after it failed. The device's own File
+Manager sidesteps this by renaming client-side, which is why nothing in the
+repository exercises the overwrite path.
+
+Deleting first is host-side only and needs no firmware change. It also fires
+`clearBookCache` ([AlmanacWebServer.cpp:1148](../../../src/network/AlmanacWebServer.cpp)),
+so the re-parse and the reset to page 1 still happen — both correct for a page
+replaced daily.
 
 ## Workflow
 
