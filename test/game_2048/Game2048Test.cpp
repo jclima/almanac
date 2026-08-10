@@ -147,3 +147,22 @@ TEST(Game2048Restore, RejectsOutOfRangeExponent) {
   // Board must be untouched by a rejected restore.
   EXPECT_EQ(g.exponentAt(0, 0), 0);
 }
+
+TEST(Game2048Restore, ClearsStaleWinFlagFromReusedInstance) {
+  // A long-lived instance (the natural pattern: one Game2048 member, reused
+  // across restore() calls) must not carry a win flag from a previous board
+  // into a restore() of a board that never reached WIN_EXPONENT (11).
+  const uint8_t wonCells[Game2048::CELLS] = {11, 0, 0, 0,  //
+                                             0,  0, 0, 0,  //
+                                             0,  0, 0, 0,  //
+                                             0,  0, 0, 0};
+  Game2048 g = boardOf(wonCells);
+  ASSERT_TRUE(g.hasWon());
+
+  const uint8_t freshCells[Game2048::CELLS] = {1, 0, 0, 0,  //
+                                               0, 0, 0, 0,  //
+                                               0, 0, 0, 0,  //
+                                               0, 0, 0, 0};
+  EXPECT_TRUE(g.restore(freshCells, 0));
+  EXPECT_FALSE(g.hasWon());
+}

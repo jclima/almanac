@@ -111,6 +111,7 @@ bool Game2048::restore(const uint8_t (&savedCells)[CELLS], const uint32_t savedS
     if (savedCells[i] > MAX_EXPONENT) return false;
   }
 
+  won = false;
   for (uint8_t i = 0; i < CELLS; ++i) {
     cells[i] = savedCells[i];
     if (cells[i] >= WIN_EXPONENT) won = true;
