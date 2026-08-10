@@ -73,6 +73,7 @@ renderer.
 | Module | Purpose | Depends on |
 |---|---|---|
 | `config.py` | Load and validate JSON config, apply defaults | stdlib |
+| `geo.py` | Great-circle math mirroring `lib/Geo/GeoMath.cpp`. Pure | stdlib |
 | `sources.py` | Four fetchers → four dataclasses, each failing independently | `urllib`, `feedparser` |
 | `render.py` | Dataclasses → XHTML strings. Pure — no network, no I/O | stdlib |
 | `deliver.py` | Package the EPUB, POST it, or save locally | `ebooklib`, PIL, `urllib` |
