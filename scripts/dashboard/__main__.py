@@ -2,7 +2,8 @@
 
 Invoked through scripts/generate_dashboard_epub.py.
 
-Exit codes: 0 success, 1 every source failed, 2 config error, 3 upload rejected.
+Exit codes: 0 success, 1 every source failed, 2 config error, 3 upload
+rejected, 4 could not write the EPUB.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ EXIT_OK = 0
 EXIT_NO_DATA = 1
 EXIT_CONFIG = 2
 EXIT_REJECTED = 3
+EXIT_WRITE_FAILED = 4
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -61,9 +63,13 @@ def main(argv: list[str] | None = None) -> int:
         ("Flights", render_flights(flights, generated)),
     ]
 
-    out_path = build_epub(
-        sections, make_cover_png(generated.date(), config.place), args.out, generated
-    )
+    try:
+        out_path = build_epub(
+            sections, make_cover_png(generated.date(), config.place), args.out, generated
+        )
+    except OSError as exc:
+        print(f"error: could not write {args.out}: {exc}", file=sys.stderr)
+        return EXIT_WRITE_FAILED
     print(f"built {out_path}")
 
     content_code = EXIT_OK if (forecast.ok or news.ok or flights.ok) else EXIT_NO_DATA

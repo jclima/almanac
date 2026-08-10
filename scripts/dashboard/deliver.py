@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import http.client
 import io
 import re
 import urllib.error
@@ -187,8 +188,34 @@ def curl_hint(epub_path: Path, host: str, remote_dir: str) -> str:
     )
 
 
+def _delete_existing(host: str, remote_path: str) -> None:
+    """Remove a previous copy so the upload is not rejected as a collision.
+
+    The device refuses an upload when the target already exists
+    (AlmanacWebServer.cpp:714), so a fixed filename needs the old one cleared
+    first. Deleting also clears that book's cache, which is what makes the new
+    copy re-render instead of showing yesterday's page. Any failure here is
+    ignored: on the first run there is simply nothing to delete.
+    """
+    body = urllib.parse.urlencode({"path": remote_path}).encode("utf-8")
+    request = urllib.request.Request(
+        f"http://{host}/delete",
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=UPLOAD_TIMEOUT_SECONDS):
+            pass
+    except (urllib.error.URLError, OSError, http.client.HTTPException):
+        pass  # nothing to delete, or the device will reject the upload and we report that
+
+
 def upload(epub_path: Path, host: str, remote_dir: str) -> UploadResult:
     """POST the EPUB to the device. Never raises."""
+    remote_path = f"{remote_dir.rstrip('/')}/{epub_path.name}"
+    _delete_existing(host, remote_path)
+
     boundary = uuid.uuid4().hex
     body = encode_multipart(UPLOAD_FIELD_NAME, epub_path.name, epub_path.read_bytes(), boundary)
     url = f"http://{host}/upload?path={urllib.parse.quote(remote_dir)}"

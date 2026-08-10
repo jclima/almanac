@@ -59,8 +59,10 @@ the exact `curl` line to push it later.
 
 ## Notes
 
-- The filename is always `Dashboard.epub`. The firmware clears that book's cache
-  on upload, so overwriting re-renders it and returns you to page 1.
+- The filename is always `Dashboard.epub`. The device refuses an upload when the
+  target already exists, so the tool deletes the previous copy first — which
+  also clears that book's cache, so the new page renders instead of yesterday's,
+  and you start back at page 1.
 - Any section that fails to fetch renders as "unavailable" with the reason; the
   rest of the page is unaffected.
 - Anonymous OpenSky access is rate-limited, so the Flights section is the one
