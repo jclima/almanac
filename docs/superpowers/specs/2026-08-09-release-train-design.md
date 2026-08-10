@@ -1,7 +1,7 @@
 # Release Train — Design Spec
 
 Date: 2026-08-09
-Status: Approved
+Status: Implemented
 Scope: Personal fork of CrossPoint Reader for the Xteink **X4**.
 
 ## Goal

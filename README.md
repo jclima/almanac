@@ -215,15 +215,58 @@ python3 scripts/generate_logo.py --preview
 ### Cutting a release
 
 Tags are `almanac-v<version>` — the bare numbers `0.4.0` through `1.5.0` are
-already taken by CrossPoint's inherited tags. Pushing one to `fork` builds
-`gh_release` and publishes the GitHub Release with all five binaries attached.
+already taken by CrossPoint's inherited tags. Cutting one is a button, not a
+manual ritual: the **Release Train** workflow computes the next version,
+bumps `platformio.ini` and the README's version line, drafts release notes,
+commits, tags, and pushes. `release.yml` then builds and publishes exactly as
+before.
 
-1. Bump `version` under `[almanac]` in `platformio.ini`. The workflow fails the
-   build if the tag and that value disagree.
-2. Write `docs/release-notes/almanac-v<version>.md`. The workflow uses it as
-   the release body; without it the release still publishes, with GitHub's
-   generated commit summary instead.
-3. `git tag almanac-v<version> && git push fork almanac-v<version>`.
+> **One-time setup:** the workflow fails at its very first step — before
+> touching anything — unless the repository secret `RELEASE_TRAIN_TOKEN` is
+> set, to a fine-grained PAT scoped to this repo with **Contents: Read and
+> write**. Reason: GitHub suppresses workflow triggers for events made with
+> the default `GITHUB_TOKEN`, so a tag pushed with it would never start
+> `release.yml` — the tag would exist, nothing would publish, and the
+> failure would look like success.
+
+**To run it:** Actions tab → **Release Train** → Run workflow. Leave the
+branch on `develop` unless you mean to release something else, and pick
+`patch`/`minor`/`major`. If you're not sure the moment is right, tick
+`dry_run` first — it runs both gates below and prints the plan (previous tag,
+next tag, commit count) without writing or pushing anything.
+
+Two gates run before anything is touched, and each names itself in its error:
+
+- **Gate A** — refuses unless every check run on the exact commit being
+  released completed successfully (`Not every check on <sha> completed
+  successfully`). No check runs at all also refuses (`No check runs found
+  for <sha>`) — the usual cause is that CI simply hasn't started yet. Either
+  way, fix: wait for CI to finish on that commit, then re-run.
+- **Gate B** — refuses if nothing changed since the last tag (`Nothing
+  changed since <tag>`), or if every changed path is under `docs/` or `*.md`
+  (`Only docs changed since <tag>`). The docs-only case has an escape hatch,
+  `allow_docs_only`, but leave it off by default: a docs-only release still
+  publishes a real firmware binary and offers it as an OTA update to every
+  device in the field, identical to the one already installed. Only tick it
+  when that's genuinely the intent, e.g. correcting release notes that
+  already shipped.
+
+Three more checks run just before anything is written, each naming the
+problem: the target tag already existing, `platformio.ini`'s version
+disagreeing with the last tag (a half-finished manual release), and
+README.md missing its `**Version X.Y.Z**` marker. Resolve whatever it names
+and re-run.
+
+Release notes are generated from the commit log **only when**
+`docs/release-notes/almanac-vX.Y.Z.md` doesn't already exist. To ship your
+own prose instead of the generated draft, write that file by hand before
+running the workflow — see
+[almanac-v1.0.2.md](docs/release-notes/almanac-v1.0.2.md) for the bar the
+hand-written ones set; the generated fallback is much plainer.
+
+The workflow bumps the README's `**Version X.Y.Z**` line automatically, but
+**not** the paragraph above it — that still describes the previous release
+until a human edits it.
 
 ## Internals
 
