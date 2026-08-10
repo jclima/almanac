@@ -181,7 +181,55 @@ def test_feed_without_url_names_the_key(tmp_path):
     with pytest.raises(ConfigError) as exc:
         load_config(write(tmp_path, payload))
     assert "news.feeds[0].url" in str(exc.value)
+
+
+def test_non_object_section_is_rejected(tmp_path):
+    payload = dict(MINIMAL)
+    payload["units"] = "celsius"
+    with pytest.raises(ConfigError) as exc:
+        load_config(write(tmp_path, payload))
+    assert "units" in str(exc.value)
+
+
+def test_non_numeric_max_per_feed_is_rejected(tmp_path):
+    payload = dict(MINIMAL)
+    payload["news"] = {"max_per_feed": "five"}
+    with pytest.raises(ConfigError) as exc:
+        load_config(write(tmp_path, payload))
+    assert "news.max_per_feed" in str(exc.value)
+
+
+def test_zero_max_per_feed_is_honoured(tmp_path):
+    payload = dict(MINIMAL)
+    payload["news"] = {"max_per_feed": 0}
+    assert load_config(write(tmp_path, payload)).max_per_feed == 0
+
+
+def test_non_numeric_radius_is_rejected(tmp_path):
+    payload = dict(MINIMAL)
+    payload["flights"] = {"radius_miles": "25 miles"}
+    with pytest.raises(ConfigError) as exc:
+        load_config(write(tmp_path, payload))
+    assert "flights.radius_miles" in str(exc.value)
+
+
+def test_non_positive_radius_is_rejected(tmp_path):
+    payload = dict(MINIMAL)
+    payload["flights"] = {"radius_miles": 0}
+    with pytest.raises(ConfigError) as exc:
+        load_config(write(tmp_path, payload))
+    assert "flights.radius_miles" in str(exc.value)
+
+
+def test_non_list_feeds_is_rejected(tmp_path):
+    payload = dict(MINIMAL)
+    payload["news"] = {"feeds": {"name": "BBC", "url": "https://x/rss"}}
+    with pytest.raises(ConfigError) as exc:
+        load_config(write(tmp_path, payload))
+    assert "news.feeds" in str(exc.value)
 ```
+
+Every section that can appear in the config is now type-checked, so `load_config` raises `ConfigError` naming the offending key for any invalid input. Task 8's CLI catches exactly that and maps it to exit code 2.
 
 - [ ] **Step 4: Run the tests to verify they fail**
 
@@ -247,6 +295,36 @@ def _require_number(section: dict, key: str, path: str) -> float:
     return float(value)
 
 
+def _require_object(raw: dict, key: str) -> dict:
+    """Return raw[key] as a dict. Absent or null yields {}; a wrong type is an error."""
+    value = raw.get(key)
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ConfigError(f"{key} must be an object (got {value!r})")
+    return value
+
+
+def _optional_count(section: dict, key: str, path: str, default: int) -> int:
+    """A non-negative integer, or the default when absent. An explicit 0 is honoured."""
+    if key not in section or section[key] is None:
+        return default
+    value = section[key]
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ConfigError(f"{path} must be a non-negative integer (got {value!r})")
+    return value
+
+
+def _optional_positive(section: dict, key: str, path: str, default: float) -> float:
+    """A number greater than zero, or the default when absent."""
+    if key not in section or section[key] is None:
+        return default
+    value = _require_number(section, key, path)
+    if value <= 0:
+        raise ConfigError(f"{path} must be greater than 0 (got {value!r})")
+    return value
+
+
 def load_config(path: Path) -> Config:
     """Read `path` and return a validated Config, or raise ConfigError."""
     if not path.is_file():
@@ -270,13 +348,17 @@ def load_config(path: Path) -> Config:
     lon = _require_number(location, "lon", "location.lon")
     place = str(location.get("name") or f"{lat:.4f}, {lon:.4f}")
 
-    units = raw.get("units") or {}
-    news = raw.get("news") or {}
-    flights = raw.get("flights") or {}
-    device = raw.get("device") or {}
+    units = _require_object(raw, "units")
+    news = _require_object(raw, "news")
+    flights = _require_object(raw, "flights")
+    device = _require_object(raw, "device")
+
+    raw_feeds = news.get("feeds")
+    if raw_feeds is not None and not isinstance(raw_feeds, list):
+        raise ConfigError(f"news.feeds must be a list (got {raw_feeds!r})")
 
     feeds: list[Feed] = []
-    for index, entry in enumerate(news.get("feeds") or []):
+    for index, entry in enumerate(raw_feeds or []):
         if not isinstance(entry, dict) or not entry.get("url"):
             raise ConfigError(f"news.feeds[{index}].url is required")
         feeds.append(Feed(name=str(entry.get("name") or entry["url"]), url=str(entry["url"])))
@@ -287,9 +369,11 @@ def load_config(path: Path) -> Config:
         lon=lon,
         temperature_unit=str(units.get("temperature") or DEFAULT_TEMPERATURE_UNIT),
         wind_unit=str(units.get("wind") or DEFAULT_WIND_UNIT),
-        max_per_feed=int(news.get("max_per_feed") or DEFAULT_MAX_PER_FEED),
+        max_per_feed=_optional_count(news, "max_per_feed", "news.max_per_feed", DEFAULT_MAX_PER_FEED),
         feeds=feeds,
-        radius_miles=float(flights.get("radius_miles") or DEFAULT_RADIUS_MILES),
+        radius_miles=_optional_positive(
+            flights, "radius_miles", "flights.radius_miles", DEFAULT_RADIUS_MILES
+        ),
         device_host=str(device.get("host") or DEFAULT_DEVICE_HOST),
         device_path=str(device.get("path") or DEFAULT_DEVICE_PATH),
     )
@@ -298,7 +382,7 @@ def load_config(path: Path) -> Config:
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `.venv/bin/pytest scripts/dashboard/tests/test_config.py -v`
-Expected: PASS, 7 tests
+Expected: PASS, 13 tests
 
 - [ ] **Step 7: Create the example config**
 
