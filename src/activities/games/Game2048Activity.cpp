@@ -1,8 +1,8 @@
 #include "Game2048Activity.h"
 
 #include <I18n.h>
-#include <esp_random.h>
 
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 
@@ -14,7 +14,13 @@
 
 namespace {
 
-uint32_t hardwareRandom(void*) { return esp_random(); }
+// esp_random() is ESP-IDF-only and has no equivalent under the simulator's
+// native platform, which fails the build entirely (missing header). Arduino's
+// random(long) already wraps esp_random() on device (WMath.cpp) and resolves
+// to a std::rand()-based shim in the simulator's Arduino.h compat header, so
+// it is the one RNG call that works in both builds -- the same pattern
+// SleepActivity.cpp already relies on for its own randomness.
+uint32_t hardwareRandom(void*) { return static_cast<uint32_t>(random(INT32_MAX)); }
 
 // Tiles from 128 up get a dithered wash. On a 1-bit panel the number alone
 // carries the value, but the wash gives the heavy end of the board a shape
