@@ -66,6 +66,27 @@ TEST(Game2048Layout, BoardIsSquareAndCentred) {
   EXPECT_LE(std::abs(leftMargin - rightMargin), 2 * Game2048Layout::GAP);
 }
 
+TEST(Game2048Layout, TileRectRowAdvancesYColAdvancesX) {
+  // Pins the axis convention Game2048Activity::render() relies on when it
+  // pairs tileRect(geometry, row, col) with exponentAt(row, col): row moves
+  // down the board (y), col moves across it (x). That pairing lives in the
+  // activity and is invisible to any host test, so this is the one thing
+  // that can catch a row/col transposition inside tileRect itself -- without
+  // it, a swap here would only show on a device, as a board whose moves go
+  // along the wrong axis.
+  const auto g = Game2048Layout::boardGeometry(Rect{0, 60, 800, 360});
+
+  const Rect origin = Game2048Layout::tileRect(g, 0, 0);
+  const Rect nextCol = Game2048Layout::tileRect(g, 0, 1);
+  const Rect nextRow = Game2048Layout::tileRect(g, 1, 0);
+
+  EXPECT_GT(nextCol.x, origin.x) << "col must advance x";
+  EXPECT_EQ(nextCol.y, origin.y) << "col must not move y";
+
+  EXPECT_GT(nextRow.y, origin.y) << "row must advance y";
+  EXPECT_EQ(nextRow.x, origin.x) << "row must not move x";
+}
+
 TEST(Game2048Layout, GeometryIsCompileTimeConstant) {
   // constexpr placement keeps the arithmetic in flash rather than costing DRAM.
   constexpr auto g = Game2048Layout::boardGeometry(Rect{0, 60, 800, 360});

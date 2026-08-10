@@ -11,9 +11,26 @@ void Game2048Store::toJson(JsonDocument& doc) const {
 
 bool Game2048Store::fromJson(JsonVariantConst doc) {
   JsonArrayConst board = doc["cells"];
-  // A board of the wrong length is corrupt, not upgradable: drop it and let
-  // the activity start a fresh game rather than restoring half a board.
-  if (board.isNull() || board.size() != Game2048::CELLS) {
+  bool corrupt = board.isNull() || board.size() != Game2048::CELLS;
+
+  // Read into a uint32_t before narrowing to uint8_t: a stored value like 260
+  // would silently truncate to 4 -- a legal exponent -- if cast straight
+  // down, so a corrupt file could otherwise produce a legal-looking board.
+  uint32_t parsed[Game2048::CELLS] = {};
+  if (!corrupt) {
+    for (uint8_t i = 0; i < Game2048::CELLS; ++i) {
+      parsed[i] = board[i] | 0u;
+      if (parsed[i] > Game2048::MAX_EXPONENT) {
+        corrupt = true;
+        break;
+      }
+    }
+  }
+
+  if (corrupt) {
+    // Wrong length or an out-of-range exponent: either way the board is
+    // corrupt, not upgradable. Drop it and let the activity start a fresh
+    // game rather than restoring half a board (or a silently-truncated one).
     LOG_ERR("G2048", "Saved board malformed; discarding");
     for (uint8_t i = 0; i < Game2048::CELLS; ++i) cells[i] = 0;
     score = 0;
@@ -21,9 +38,7 @@ bool Game2048Store::fromJson(JsonVariantConst doc) {
     return true;
   }
 
-  for (uint8_t i = 0; i < Game2048::CELLS; ++i) {
-    cells[i] = board[i] | 0u;
-  }
+  for (uint8_t i = 0; i < Game2048::CELLS; ++i) cells[i] = static_cast<uint8_t>(parsed[i]);
   score = doc["score"] | 0u;
   bestScore = doc["best"] | 0u;
   return true;

@@ -21,8 +21,13 @@ class Game2048Activity final : public Activity {
 
   Game2048 game;
   // Counts down to the next de-ghosting pass. FAST_REFRESH is a differential
-  // waveform, so consecutive fast paints accumulate residue.
-  uint8_t movesUntilDeghost = MOVES_PER_DEGHOST;
+  // waveform, so consecutive fast paints accumulate residue. Starts at 1, not
+  // MOVES_PER_DEGHOST: onEnter() only calls startNewGame() (which also forces
+  // this to 1) on the no-save, corrupt-save, and game-over paths. A board
+  // that restores successfully -- the normal case on every entry after the
+  // first game -- skips startNewGame() entirely, so this initialiser is what
+  // forces that first paint to de-ghost over whatever Home left on the panel.
+  uint8_t movesUntilDeghost = 1;
   bool dirty = false;
 
   static constexpr uint8_t MOVES_PER_DEGHOST = 15;

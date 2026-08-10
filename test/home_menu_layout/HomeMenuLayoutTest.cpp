@@ -143,9 +143,12 @@ TEST(HomeTileLayout, LoneTileInFinalRowSpansFullWidth) {
   EXPECT_LT(r2.width, kPortraitWidth - m.contentSidePadding * 2);
 }
 
-// Adding a home entry is only safe while the grid stays within three rows --
-// beyond that the last row collides with the button-hints bar. This pins the
-// budget rather than leaving the next person to discover it on a device.
+// Pins that the grid stays within three rows for every recent/OPDS
+// combination *at the item counts this test's composition() computes* --
+// beyond three rows the last row collides with the button-hints bar.
+// composition() hard-codes its base count (6) as a hand-copied duplicate of
+// HomeActivity::getMenuItemCount(); a genuine 7th fixed home entry would not
+// fail this test unless that duplicate is updated alongside it.
 TEST(HomeTileLayout, GridNeverExceedsThreeRows) {
   for (const bool recent : {false, true}) {
     for (const bool opds : {false, true}) {
@@ -181,7 +184,7 @@ int lastRowBottomAlmanac(const int rowCount) {
 // Home now has 6 fixed entries (File Browser, Recents, File Transfer, Nearby
 // Flights, 2048, Settings), so a recent book alone -- no OPDS -- already pushes
 // the row-menu formula to 7 items. At 7, fittedRowStep floors at rowHeight
-// (299-45)/6 == 42, clamped up to 45) instead of compressing, and the last row
+// ((299-45)/6 == 42, clamped up to 45) instead of compressing, and the last row
 // lands at 768 vs a 752 hints-bar top: this composition no longer fits via gap
 // compression. The neither-recent-nor-OPDS composition is the one still within
 // budget at the pre-2048-tile item count (6), so that is what this test pins
