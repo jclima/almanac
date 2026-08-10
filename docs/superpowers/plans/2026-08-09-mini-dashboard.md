@@ -305,26 +305,6 @@ def _require_object(raw: dict, key: str) -> dict:
     return value
 
 
-def _optional_count(section: dict, key: str, path: str, default: int) -> int:
-    """A non-negative integer, or the default when absent. An explicit 0 is honoured."""
-    if key not in section or section[key] is None:
-        return default
-    value = section[key]
-    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-        raise ConfigError(f"{path} must be a non-negative integer (got {value!r})")
-    return value
-
-
-def _optional_positive(section: dict, key: str, path: str, default: float) -> float:
-    """A number greater than zero, or the default when absent."""
-    if key not in section or section[key] is None:
-        return default
-    value = _require_number(section, key, path)
-    if value <= 0:
-        raise ConfigError(f"{path} must be greater than 0 (got {value!r})")
-    return value
-
-
 def load_config(path: Path) -> Config:
     """Read `path` and return a validated Config, or raise ConfigError."""
     if not path.is_file():
@@ -363,17 +343,39 @@ def load_config(path: Path) -> Config:
             raise ConfigError(f"news.feeds[{index}].url is required")
         feeds.append(Feed(name=str(entry.get("name") or entry["url"]), url=str(entry["url"])))
 
+    max_per_feed_raw = news.get("max_per_feed")
+    if max_per_feed_raw is None:
+        max_per_feed = DEFAULT_MAX_PER_FEED
+    else:
+        if (
+            not isinstance(max_per_feed_raw, int)
+            or isinstance(max_per_feed_raw, bool)
+            or max_per_feed_raw < 0
+        ):
+            raise ConfigError(
+                f"news.max_per_feed must be a non-negative integer (got {max_per_feed_raw!r})"
+            )
+        max_per_feed = max_per_feed_raw
+
+    radius_miles_raw = flights.get("radius_miles")
+    if radius_miles_raw is None:
+        radius_miles = DEFAULT_RADIUS_MILES
+    else:
+        radius_miles = _require_number(flights, "radius_miles", "flights.radius_miles")
+        if radius_miles <= 0:
+            raise ConfigError(
+                f"flights.radius_miles must be greater than 0 (got {radius_miles_raw!r})"
+            )
+
     return Config(
         place=place,
         lat=lat,
         lon=lon,
         temperature_unit=str(units.get("temperature") or DEFAULT_TEMPERATURE_UNIT),
         wind_unit=str(units.get("wind") or DEFAULT_WIND_UNIT),
-        max_per_feed=_optional_count(news, "max_per_feed", "news.max_per_feed", DEFAULT_MAX_PER_FEED),
+        max_per_feed=max_per_feed,
         feeds=feeds,
-        radius_miles=_optional_positive(
-            flights, "radius_miles", "flights.radius_miles", DEFAULT_RADIUS_MILES
-        ),
+        radius_miles=radius_miles,
         device_host=str(device.get("host") or DEFAULT_DEVICE_HOST),
         device_path=str(device.get("path") or DEFAULT_DEVICE_PATH),
     )
