@@ -65,7 +65,7 @@ the exact `curl` line to push it later.
   and you start back at page 1.
 - Because the old copy is removed first, an upload that fails partway leaves the
   device without a dashboard until the next successful run. The local copy under
-  `build/` always survives, and the command prints the `curl` line to retry with.
+  `build/` always survives, so you can retry without regenerating.
 - Any section that fails to fetch renders as "unavailable" with the reason; the
   rest of the page is unaffected.
 - Anonymous OpenSky access is rate-limited, so the Flights section is the one
