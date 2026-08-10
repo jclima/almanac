@@ -70,3 +70,49 @@ def test_feed_without_url_names_the_key(tmp_path):
     with pytest.raises(ConfigError) as exc:
         load_config(write(tmp_path, payload))
     assert "news.feeds[0].url" in str(exc.value)
+
+
+def test_non_object_section_is_rejected(tmp_path):
+    payload = dict(MINIMAL)
+    payload["units"] = "celsius"
+    with pytest.raises(ConfigError) as exc:
+        load_config(write(tmp_path, payload))
+    assert "units" in str(exc.value)
+
+
+def test_non_numeric_max_per_feed_is_rejected(tmp_path):
+    payload = dict(MINIMAL)
+    payload["news"] = {"max_per_feed": "five"}
+    with pytest.raises(ConfigError) as exc:
+        load_config(write(tmp_path, payload))
+    assert "news.max_per_feed" in str(exc.value)
+
+
+def test_zero_max_per_feed_is_honoured(tmp_path):
+    payload = dict(MINIMAL)
+    payload["news"] = {"max_per_feed": 0}
+    assert load_config(write(tmp_path, payload)).max_per_feed == 0
+
+
+def test_non_numeric_radius_is_rejected(tmp_path):
+    payload = dict(MINIMAL)
+    payload["flights"] = {"radius_miles": "25 miles"}
+    with pytest.raises(ConfigError) as exc:
+        load_config(write(tmp_path, payload))
+    assert "flights.radius_miles" in str(exc.value)
+
+
+def test_non_positive_radius_is_rejected(tmp_path):
+    payload = dict(MINIMAL)
+    payload["flights"] = {"radius_miles": 0}
+    with pytest.raises(ConfigError) as exc:
+        load_config(write(tmp_path, payload))
+    assert "flights.radius_miles" in str(exc.value)
+
+
+def test_non_list_feeds_is_rejected(tmp_path):
+    payload = dict(MINIMAL)
+    payload["news"] = {"feeds": {"name": "BBC", "url": "https://x/rss"}}
+    with pytest.raises(ConfigError) as exc:
+        load_config(write(tmp_path, payload))
+    assert "news.feeds" in str(exc.value)
