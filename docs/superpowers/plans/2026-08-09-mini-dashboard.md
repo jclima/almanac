@@ -1072,6 +1072,10 @@ git commit -m "feat: add the weather and sky forecast source"
 
 A single feed failing does not fail the section: its `FeedResult` carries the error and the others still render. The section as a whole only fails when no feeds are configured.
 
+The except clause is wider than transport errors alone. `urllib.request.Request()` raises `ValueError` for a scheme-less URL, which `config.py` permits (it only checks the URL is truthy), and `http.client.HTTPException` does not subclass `OSError`. Both would otherwise escape and break the never-raise constraint.
+
+This task also adds `scripts/dashboard/tests/test_sources_http.py`, closing a gap left by Task 3: `_get_json`'s own `isinstance(payload, dict)` guard was never exercised, because the Task 3 tests monkeypatch `_get_json` away entirely. These four tests drive its real body by monkeypatching `urllib.request.urlopen`, and cover a decoded object, a JSON array, a non-JSON body, and the `timeout=15` argument.
+
 - [ ] **Step 1: Write the failing tests**
 
 Create `scripts/dashboard/tests/test_sources_news.py`:
@@ -1207,7 +1211,7 @@ def fetch_news(config: Config) -> Fetched[NewsDigest]:
     for feed in config.feeds:
         try:
             results.append(parse_feed(feed.name, _fetch_text(feed.url), config.max_per_feed))
-        except (urllib.error.URLError, OSError) as exc:
+        except (urllib.error.URLError, OSError, http.client.HTTPException, ValueError) as exc:
             results.append(FeedResult(name=feed.name, headlines=[], error=f"unreachable ({exc})"))
 
     return Fetched(value=NewsDigest(feeds=results))
@@ -1215,8 +1219,8 @@ def fetch_news(config: Config) -> Fetched[NewsDigest]:
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `.venv/bin/pytest scripts/dashboard/tests/test_sources_news.py -v`
-Expected: PASS, 6 tests
+Run: `.venv/bin/pytest scripts/dashboard/tests/ -v`
+Expected: PASS, 60 tests — the brief's 6 `parse_feed` tests, 4 `fetch_news` regression tests pinning the widened except clause, the 4 new `_get_json` tests, and everything from Tasks 1–3
 
 - [ ] **Step 5: Commit**
 
