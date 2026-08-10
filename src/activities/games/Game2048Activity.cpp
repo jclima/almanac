@@ -64,8 +64,16 @@ void Game2048Activity::onExit() {
 }
 
 void Game2048Activity::startNewGame() {
+  // Fold the outgoing game's score into the best before it's discarded --
+  // this is the only place a game ends (Confirm during play, or a restored
+  // game-over board on entry), so it's the only place the best can be lost.
+  if (game.score() > GAME_2048_STORE.bestScore) GAME_2048_STORE.bestScore = game.score();
   game.reset(hardwareRandom, nullptr);
-  movesUntilDeghost = MOVES_PER_DEGHOST;
+  // 1, not MOVES_PER_DEGHOST: force the *next* render to de-ghost. A fresh
+  // board is the largest possible pixel delta FAST_REFRESH's differential
+  // waveform will ever see, so it must not be the one that lands right after
+  // a reset countdown.
+  movesUntilDeghost = 1;
   dirty = true;
 }
 
@@ -169,7 +177,15 @@ void Game2048Activity::render(RenderLock&&) {
   }
 
   if (game.status() == Game2048::Status::GameOver) {
-    renderer.drawCenteredText(UI_12_FONT_ID, geometry.originY + geometry.tilePitch * 2, tr(STR_GAME_OVER), true);
+    const int bannerY = geometry.originY + geometry.tilePitch * 2;
+    const int bannerHeight = renderer.getLineHeight(UI_12_FONT_ID);
+    // Clear a band behind the banner first -- drawCenteredText only sets
+    // glyph pixels, and at game over the board is full (with a dithered
+    // wash on tiles at DITHER_FROM_EXPONENT and up), so without this the
+    // text would land on top of tile borders and dither speckle. Same
+    // pattern as BaseTheme::drawHeader's battery-area clear.
+    renderer.fillRect(0, bannerY, pageWidth, bannerHeight, false);
+    renderer.drawCenteredText(UI_12_FONT_ID, bannerY, tr(STR_GAME_OVER), true);
   }
 
   const auto labels = mappedInput.mapDirectionalLabels(tr(STR_BACK), tr(STR_NEW_GAME), "", "", "", "");
