@@ -233,18 +233,22 @@ before.
 branch on `develop` unless you mean to release something else, and pick
 `patch`/`minor`/`major`. If you're not sure the moment is right, tick
 `dry_run` first — it runs both gates below and prints the plan (previous tag,
-next tag, commit count) without writing or pushing anything.
+next tag, commit count, and whether it will keep your hand-written release
+notes or draft one) without writing or pushing anything.
 
 Two gates run before anything is touched, and each names itself in its error:
 
 - **Gate A** — refuses unless every check run on the exact commit being
-  released completed successfully (`Not every check on <sha> completed
-  successfully`). No check runs at all also refuses (`No check runs found
-  for <sha>`) — the usual cause is that CI simply hasn't started yet. Either
-  way, fix: wait for CI to finish on that commit, then re-run.
+  released completed successfully. Two messages, two different fixes:
+  `No check runs found for <sha>` means CI simply hasn't started yet — wait
+  for it, then re-run. `Not every check on <sha> completed successfully`
+  covers both a check still running (wait, then re-run) and a check that
+  actually failed — waiting never resolves the failed case; land a fix
+  instead, and release *that* commit once its own CI is green.
 - **Gate B** — refuses if nothing changed since the last tag (`Nothing
-  changed since <tag>`), or if every changed path is under `docs/` or `*.md`
-  (`Only docs changed since <tag>`). The docs-only case has an escape hatch,
+  changed since <tag>` — no override for this one; there's simply nothing to
+  release yet), or if every changed path is under `docs/` or `*.md` (`Only
+  docs changed since <tag>`). The docs-only case alone has an escape hatch,
   `allow_docs_only`, but leave it off by default: a docs-only release still
   publishes a real firmware binary and offers it as an OTA update to every
   device in the field, identical to the one already installed. Only tick it
@@ -264,9 +268,9 @@ running the workflow — see
 [almanac-v1.0.2.md](docs/release-notes/almanac-v1.0.2.md) for the bar the
 hand-written ones set; the generated fallback is much plainer.
 
-The workflow bumps the README's `**Version X.Y.Z**` line automatically, but
-**not** the paragraph above it — that still describes the previous release
-until a human edits it.
+The workflow only bumps the `**Version X.Y.Z**` marker itself — the rest of
+that sentence, and every paragraph after it, still describe the previous
+release until a human edits them.
 
 ## Internals
 
