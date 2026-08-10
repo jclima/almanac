@@ -7,6 +7,7 @@
 
 #include "OpdsServerStore.h"
 #include "activities/flights/NearbyFlightsActivity.h"
+#include "activities/games/Game2048Activity.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
@@ -195,6 +196,8 @@ void ActivityManager::goToNearbyFlights() {
   replaceActivity(std::make_unique<NearbyFlightsActivity>(renderer, mappedInput));
 }
 
+void ActivityManager::goToGame2048() { replaceActivity(std::make_unique<Game2048Activity>(renderer, mappedInput)); }
+
 void ActivityManager::goToFileBrowser(std::string path) {
   replaceActivity(std::make_unique<FileBrowserActivity>(renderer, mappedInput, std::move(path)));
 }
@@ -241,6 +244,8 @@ void ActivityManager::goHome(HomeMenuItem initialMenuItem) {
       initialMenuItem = HomeMenuItem::FILE_TRANSFER;
     } else if (activityName == "NearbyFlights") {
       initialMenuItem = HomeMenuItem::NEARBY_FLIGHTS;
+    } else if (activityName == "Game2048") {
+      initialMenuItem = HomeMenuItem::GAME_2048;
     } else if (activityName == "Settings") {
       initialMenuItem = HomeMenuItem::SETTINGS_MENU;
     }
