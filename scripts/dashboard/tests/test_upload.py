@@ -1,3 +1,4 @@
+import http.client
 import io
 import urllib.error
 from pathlib import Path
@@ -120,3 +121,20 @@ def test_upload_maps_a_transport_error_to_unreachable(monkeypatch, tmp_path):
 
     assert result.status is UploadStatus.UNREACHABLE
     assert "connection refused" in result.detail
+
+
+def test_upload_maps_a_truncated_response_to_unreachable(monkeypatch, tmp_path):
+    # http.client.HTTPException does not subclass OSError (see fetch_forecast's
+    # and fetch_news's equivalent regression tests), so a raw
+    # except (URLError, OSError) would let this propagate and crash upload(),
+    # contradicting its "Never raises" docstring.
+    def fake_urlopen(request, timeout=None):
+        if request.full_url.endswith("/delete"):
+            return _FakeResponse(b"")
+        raise http.client.IncompleteRead(b"partial")
+
+    monkeypatch.setattr("dashboard.deliver.urllib.request.urlopen", fake_urlopen)
+
+    result = upload(_write_fake_epub(tmp_path), "almanac.local", "/Books")
+
+    assert result.status is UploadStatus.UNREACHABLE

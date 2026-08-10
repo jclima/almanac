@@ -62,12 +62,16 @@ def test_fetch_news_survives_a_malformed_feed_url():
     # config.py only requires feeds[].url to be truthy — a scheme-less URL like
     # "example.com/rss" passes validation but urllib.request.Request() raises
     # ValueError (not URLError/OSError) when it tries to parse it. fetch_news
-    # must convert that into a FeedResult error, not propagate the exception.
+    # must convert that into a FeedResult error, not propagate the exception —
+    # and must report it as a config problem, not a network failure, so a
+    # first-run user debugs their config instead of their Wi-Fi.
     config = Config(place="x", lat=0.0, lon=0.0, feeds=[Feed(name="Bad", url="example.com/rss")])
     result = sources.fetch_news(config)
     assert result.ok
     assert len(result.value.feeds) == 1
     assert result.value.feeds[0].error is not None
+    assert "invalid feed URL" in result.value.feeds[0].error
+    assert "unreachable" not in result.value.feeds[0].error
 
 
 def test_fetch_news_survives_a_truncated_response(monkeypatch):

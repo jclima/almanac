@@ -11,6 +11,7 @@ from dashboard.sources import (
     Forecast,
     Headline,
     NewsDigest,
+    moon_phase,
 )
 
 GENERATED = dt.datetime(2026, 8, 9, 7, 30)
@@ -63,8 +64,13 @@ def test_sky_shows_sun_times_and_the_moon_phase():
     html = render_sky(FORECAST, GENERATED)
     assert "06:52" in html
     assert "20:31" in html
-    # 2026-08-09 falls in a known phase; just assert a phase name is present.
-    assert "Moon" in html or "Quarter" in html
+    # render_sky computes the phase for FORECAST.days[0].date (2026-08-09), not
+    # for GENERATED. Compute the same value independently and assert on the
+    # actual name, rather than "Moon" (a hardcoded literal in render.py's
+    # f-string) or "Quarter" (a substring of half the phase names) — either of
+    # which would pass no matter what moon_phase() actually returned.
+    expected_phase = moon_phase(dt.date(2026, 8, 9)).name
+    assert expected_phase in html
 
 
 def test_news_escapes_html_in_titles():
@@ -117,7 +123,13 @@ def test_news_renders_an_empty_feed_as_empty_not_as_failure():
     html = render_news(digest, GENERATED)
     assert "Quiet" in html
     assert "Unavailable" not in html
-    assert "feed-error" not in html
+    # Assert on visible content, not the "feed-error" CSS class name — the
+    # comment on test_a_failed_section_renders_the_reason above warns against
+    # exactly that. A quiet feed renders as a bare, empty list: no error
+    # paragraph and no headline items after its heading.
+    tail = html.split("<h2>Quiet</h2>", 1)[1]
+    assert "<p" not in tail
+    assert "<li>" not in tail
 
 
 def test_flights_renders_unknown_altitude_and_speed_as_dashes():

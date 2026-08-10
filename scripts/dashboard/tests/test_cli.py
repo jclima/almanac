@@ -16,8 +16,11 @@ from dashboard.deliver import UploadResult, UploadStatus
 from dashboard.sources import (
     CurrentConditions,
     DayForecast,
+    FeedResult,
     Fetched,
     Forecast,
+    Headline,
+    NewsDigest,
 )
 
 FAILED = Fetched(error="boom")
@@ -102,7 +105,10 @@ def test_a_successful_source_with_a_rejected_upload_exits_rejected(monkeypatch, 
     assert code == cli.EXIT_REJECTED == 3
     captured = capsys.readouterr()
     assert "error: device rejected the upload — HTTP 400: File already exists" in captured.err
-    assert "the file is still at" in captured.err
+    # The device copy is gone by the time this prints (upload() deletes before
+    # posting) — the message must not read as "the device still has it".
+    assert "your local copy is at" in captured.err
+    assert "already removed" in captured.err
 
 
 def test_a_successful_source_with_an_unreachable_device_exits_ok_and_prints_the_curl_hint(
@@ -160,3 +166,40 @@ def test_a_write_failure_exits_write_failed_and_does_not_upload(monkeypatch, tmp
     captured = capsys.readouterr()
     out_path = tmp_path / "Dashboard.epub"
     assert f"error: could not write {out_path}: No space left on device" in captured.err
+
+
+def test_every_source_failing_realistically_exits_no_data(monkeypatch, tmp_path, capsys):
+    # fetch_news returns a successful digest whenever feeds are configured, even
+    # when every feed inside it failed — the shape a real outage produces. The
+    # FAILED = Fetched(error="boom") fixture other tests use for news is a state
+    # the real fetch_news() cannot reach once feeds are configured, so it never
+    # exercised this branch realistically.
+    dead_news = Fetched(
+        value=NewsDigest(feeds=[FeedResult(name="BBC", headlines=[], error="unreachable (timed out)")])
+    )
+    _patch_sources(monkeypatch, news=dead_news)
+    monkeypatch.setattr(cli, "upload", lambda *a, **k: UploadResult(UploadStatus.UPLOADED, "ok"))
+
+    code = cli.main(_args(tmp_path))
+
+    assert code == cli.EXIT_NO_DATA == 1
+    captured = capsys.readouterr()
+    assert "warning: news unavailable — unreachable (timed out)" in captured.err
+
+
+def test_a_healthy_news_digest_alone_exits_ok(monkeypatch, tmp_path, capsys):
+    # Mirrors the realistic-outage test above from the other side: a digest
+    # where every feed succeeded must count as content on its own, even with
+    # weather and flights both down. Pins _news_has_content()'s True branch —
+    # every other CLI fixture only ever drives it False.
+    healthy_news = Fetched(
+        value=NewsDigest(feeds=[FeedResult(name="BBC", headlines=[Headline("A story", None)])])
+    )
+    _patch_sources(monkeypatch, news=healthy_news)
+    monkeypatch.setattr(cli, "upload", lambda *a, **k: UploadResult(UploadStatus.UPLOADED, "ok"))
+
+    code = cli.main(_args(tmp_path))
+
+    assert code == cli.EXIT_OK == 0
+    captured = capsys.readouterr()
+    assert "warning: news unavailable" not in captured.err

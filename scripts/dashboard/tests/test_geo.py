@@ -13,9 +13,12 @@ def test_distance_to_self_is_zero():
 
 
 def test_london_to_paris():
-    # Great-circle London -> Paris is ~213.7 miles.
+    # Great-circle London -> Paris is ~213.7 miles. This is the one constant
+    # geo.py exists to keep identical to lib/Geo/GeoMath.cpp (EARTH_RADIUS_MILES),
+    # so the tolerance is tight enough that swapping in the equatorial or polar
+    # Earth radius by mistake would not pass unnoticed.
     d = distance_miles(51.5074, -0.1278, 48.8566, 2.3522)
-    assert d == pytest.approx(213.7, abs=2.0)
+    assert d == pytest.approx(213.7, abs=0.25)
 
 
 def test_bearing_due_north():

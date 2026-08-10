@@ -238,5 +238,5 @@ def upload(epub_path: Path, host: str, remote_dir: str) -> UploadResult:
             status=UploadStatus.REJECTED,
             detail=f"HTTP {exc.code}: {exc.read().decode('utf-8', errors='replace').strip()}",
         )
-    except (urllib.error.URLError, OSError) as exc:
+    except (urllib.error.URLError, OSError, http.client.HTTPException) as exc:
         return UploadResult(status=UploadStatus.UNREACHABLE, detail=str(exc))

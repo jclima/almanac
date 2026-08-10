@@ -116,6 +116,17 @@ def test_parse_states_survives_a_wholly_malformed_states_list():
     assert snapshot.aircraft == []
 
 
+def test_parse_states_skips_a_dict_shaped_entry_without_losing_the_rest():
+    # OpenSky's documented shape is a list; a dict entry (e.g. from a
+    # nonstandard mirror or a future API change) makes `entry[5]` raise
+    # KeyError rather than the TypeError/IndexError this except tuple already
+    # covered — the exact failure class the per-record isolation exists for.
+    bad = {i: i for i in range(12) if i != 5}  # len >= 10, but no key 5
+    good = state("good", "GOOD1", LON + 0.02, LAT)
+    snapshot = parse_states({"states": [bad, good]}, LAT, LON, 25.0)
+    assert [c.callsign for c in snapshot.aircraft] == ["GOOD1"]
+
+
 def test_parse_states_rejects_a_non_object_payload():
     for payload in ([1, 2, 3], "text", None):
         with pytest.raises(ValueError):

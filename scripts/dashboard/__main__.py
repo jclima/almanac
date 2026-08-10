@@ -16,7 +16,7 @@ from pathlib import Path
 from .config import ConfigError, load_config
 from .deliver import UploadStatus, build_epub, curl_hint, make_cover_png, upload
 from .render import render_flights, render_news, render_sky, render_weather
-from .sources import fetch_flights, fetch_forecast, fetch_news
+from .sources import Fetched, NewsDigest, fetch_flights, fetch_forecast, fetch_news
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG = REPO_ROOT / "scripts/dashboard.config.local.json"
@@ -37,6 +37,18 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _news_has_content(fetched: Fetched[NewsDigest]) -> bool:
+    """True when at least one feed came back without an error.
+
+    fetch_news returns a successful NewsDigest whenever feeds are configured,
+    even if every one of them failed, so `fetched.ok` alone cannot tell an
+    outage from a good run.
+    """
+    if not fetched.ok:
+        return False
+    return any(feed.error is None for feed in fetched.value.feeds)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
 
@@ -52,9 +64,21 @@ def main(argv: list[str] | None = None) -> int:
     news = fetch_news(config)
     flights = fetch_flights(config)
 
-    for label, fetched in (("weather", forecast), ("news", news), ("flights", flights)):
-        if not fetched.ok:
-            print(f"warning: {label} unavailable — {fetched.error}", file=sys.stderr)
+    news_ok = _news_has_content(news)
+    news_reason = news.error
+    if news.ok and not news_ok:
+        # Every feed errored despite fetch_news() reporting overall success;
+        # feeds is non-empty whenever news.ok is True (see _news_has_content),
+        # but guard anyway rather than assume that invariant holds forever.
+        news_reason = news.value.feeds[0].error if news.value.feeds else news.error
+
+    for label, ok, reason in (
+        ("weather", forecast.ok, forecast.error),
+        ("news", news_ok, news_reason),
+        ("flights", flights.ok, flights.error),
+    ):
+        if not ok:
+            print(f"warning: {label} unavailable — {reason}", file=sys.stderr)
 
     sections = [
         ("Weather", render_weather(forecast, generated)),
@@ -72,7 +96,9 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_WRITE_FAILED
     print(f"built {out_path}")
 
-    content_code = EXIT_OK if (forecast.ok or news.ok or flights.ok) else EXIT_NO_DATA
+    content_code = (
+        EXIT_OK if (forecast.ok or _news_has_content(news) or flights.ok) else EXIT_NO_DATA
+    )
 
     if args.no_upload:
         return content_code
@@ -84,7 +110,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if result.status is UploadStatus.REJECTED:
         print(f"error: device rejected the upload — {result.detail}", file=sys.stderr)
-        print(f"the file is still at {out_path}", file=sys.stderr)
+        print(
+            f"the previous copy on the device was already removed; "
+            f"your local copy is at {out_path}",
+            file=sys.stderr,
+        )
         return EXIT_REJECTED
 
     print(f"device not reachable ({result.detail})")

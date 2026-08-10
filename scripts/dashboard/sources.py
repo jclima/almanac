@@ -266,8 +266,12 @@ def fetch_news(config: Config) -> Fetched[NewsDigest]:
     for feed in config.feeds:
         try:
             results.append(parse_feed(feed.name, _fetch_text(feed.url), config.max_per_feed))
-        except (urllib.error.URLError, OSError, http.client.HTTPException, ValueError) as exc:
+        except (urllib.error.URLError, OSError, http.client.HTTPException) as exc:
             results.append(FeedResult(name=feed.name, headlines=[], error=f"unreachable ({exc})"))
+        except ValueError as exc:
+            results.append(
+                FeedResult(name=feed.name, headlines=[], error=f"invalid feed URL ({exc})")
+            )
 
     return Fetched(value=NewsDigest(feeds=results))
 
@@ -333,7 +337,7 @@ def parse_states(
                     bearing=compass_point(initial_bearing_degrees(lat, lon, craft_lat, craft_lon)),
                 )
             )
-        except (TypeError, ValueError, IndexError):
+        except (TypeError, ValueError, IndexError, KeyError):
             continue  # one malformed record must not blank the whole section
 
     found.sort(key=lambda craft: craft.distance_miles)
