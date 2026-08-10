@@ -298,33 +298,43 @@ class FlightSnapshot:
 def parse_states(
     payload: dict, lat: float, lon: float, radius_miles: float, place: str = ""
 ) -> FlightSnapshot:
-    """Turn an OpenSky states/all response into a FlightSnapshot. Pure."""
+    """Turn an OpenSky states/all response into a FlightSnapshot.
+
+    Pure. Malformed entries are skipped; a non-dict payload raises ValueError.
+    """
+    if not isinstance(payload, dict):
+        raise ValueError(f"expected a JSON object, got {type(payload).__name__}")
     states = payload.get("states") or []
 
     found: list[Aircraft] = []
     for entry in states:
-        if len(entry) < 10:
-            continue
-        craft_lon, craft_lat = entry[5], entry[6]
-        if craft_lon is None or craft_lat is None or entry[8]:
-            continue  # no position, or on the ground
+        try:
+            if len(entry) < 10:
+                continue
+            craft_lon, craft_lat = entry[5], entry[6]
+            if craft_lon is None or craft_lat is None or entry[8]:
+                continue  # no position, or on the ground
 
-        distance = distance_miles(lat, lon, craft_lat, craft_lon)
-        if distance > radius_miles:
-            continue  # the bounding box is square; the radius is not
+            distance = distance_miles(lat, lon, craft_lat, craft_lon)
+            if distance > radius_miles:
+                continue  # the bounding box is square; the radius is not
 
-        altitude_m = entry[7] if entry[7] is not None else entry[13]
-        velocity = entry[9]
-        found.append(
-            Aircraft(
-                callsign=str(entry[1] or "").strip() or str(entry[0] or "").strip(),
-                origin_country=str(entry[2] or "").strip(),
-                altitude_ft=int(altitude_m * METRES_TO_FEET) if altitude_m is not None else None,
-                speed_kts=int(velocity * MPS_TO_KNOTS) if velocity is not None else None,
-                distance_miles=distance,
-                bearing=compass_point(initial_bearing_degrees(lat, lon, craft_lat, craft_lon)),
+            altitude_m = entry[7]
+            if altitude_m is None and len(entry) > 13:
+                altitude_m = entry[13]
+            velocity = entry[9]
+            found.append(
+                Aircraft(
+                    callsign=str(entry[1] or "").strip() or str(entry[0] or "").strip(),
+                    origin_country=str(entry[2] or "").strip(),
+                    altitude_ft=int(altitude_m * METRES_TO_FEET) if altitude_m is not None else None,
+                    speed_kts=int(velocity * MPS_TO_KNOTS) if velocity is not None else None,
+                    distance_miles=distance,
+                    bearing=compass_point(initial_bearing_degrees(lat, lon, craft_lat, craft_lon)),
+                )
             )
-        )
+        except (TypeError, ValueError, IndexError):
+            continue  # one malformed record must not blank the whole section
 
     found.sort(key=lambda craft: craft.distance_miles)
     return FlightSnapshot(place=place, radius_miles=radius_miles, aircraft=found[:MAX_AIRCRAFT])

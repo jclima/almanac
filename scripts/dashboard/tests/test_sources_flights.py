@@ -90,6 +90,38 @@ def test_parse_states_threads_the_place_through():
     assert snapshot.radius_miles == 25.0
 
 
+def test_parse_states_keeps_a_short_entry_with_unknown_altitude():
+    truncated = state("bad", "NOALT1", LON + 0.01, LAT, altitude_m=None)[:10]
+    good = state("good", "GOOD1", LON + 0.02, LAT)
+    snapshot = parse_states({"states": [truncated, good]}, LAT, LON, 25.0)
+    assert [c.callsign for c in snapshot.aircraft] == ["NOALT1", "GOOD1"]
+    assert snapshot.aircraft[0].altitude_ft is None
+
+
+def test_parse_states_skips_a_junk_entry_without_losing_the_rest():
+    good = state("good", "GOOD1", LON + 0.02, LAT)
+    snapshot = parse_states({"states": [None, good]}, LAT, LON, 25.0)
+    assert [c.callsign for c in snapshot.aircraft] == ["GOOD1"]
+
+
+def test_parse_states_reads_a_short_entry_when_altitude_is_present():
+    short = state("s", "SHORT1", LON + 0.01, LAT)[:10]
+    craft = parse_states({"states": [short]}, LAT, LON, 25.0).aircraft[0]
+    assert craft.callsign == "SHORT1"
+    assert craft.altitude_ft is not None
+
+
+def test_parse_states_survives_a_wholly_malformed_states_list():
+    snapshot = parse_states({"states": [None, 42, "junk", []]}, LAT, LON, 25.0)
+    assert snapshot.aircraft == []
+
+
+def test_parse_states_rejects_a_non_object_payload():
+    for payload in ([1, 2, 3], "text", None):
+        with pytest.raises(ValueError):
+            parse_states(payload, LAT, LON, 25.0)
+
+
 def test_fetch_flights_reports_the_opensky_rate_limit(monkeypatch):
     def rate_limited(url):
         raise urllib.error.HTTPError(url, 429, "Too Many Requests", None, None)
@@ -133,10 +165,12 @@ def test_fetch_flights_survives_a_transport_error(monkeypatch):
     assert "could not reach OpenSky" in result.error
 
 
-def test_fetch_flights_survives_a_malformed_response(monkeypatch):
-    # A state entry that is not a sequence makes parse_states's len(entry)
-    # raise TypeError; fetch_flights must convert that into a Fetched error.
-    monkeypatch.setattr(sources, "_get_json", lambda url: {"states": [123]})
+def test_fetch_flights_survives_a_non_object_payload(monkeypatch):
+    # A single malformed state entry is now skipped per-record (see the
+    # parse_states tests above), so it no longer reaches fetch_flights as an
+    # error. A non-dict payload still does: parse_states's isinstance guard
+    # raises ValueError, which fetch_flights must convert into a Fetched error.
+    monkeypatch.setattr(sources, "_get_json", lambda url: [1, 2, 3])
     result = sources.fetch_flights(CONFIG)
     assert not result.ok
     assert "unexpected OpenSky response" in result.error
