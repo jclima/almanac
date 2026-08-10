@@ -49,7 +49,7 @@ network feature.
 
 | Question | Decision |
 |---|---|
-| Where it runs | Host (macOS), invoked manually as `python3 -m scripts.dashboard` |
+| Where it runs | Host (macOS), invoked manually as `python3 scripts/generate_dashboard_epub.py` |
 | Firmware change | None |
 | File layout | A package, `scripts/dashboard/`, not a flat script — see below |
 | Config | `scripts/dashboard.config.local.json`, gitignored; `dashboard.config.example.json` committed |
@@ -78,6 +78,11 @@ renderer.
 | `render.py` | Dataclasses → XHTML strings. Pure — no network, no I/O | stdlib |
 | `deliver.py` | Package the EPUB, POST it, or save locally | `ebooklib`, PIL, `urllib` |
 | `__main__.py` | Wire together, CLI flags, exit codes | the above |
+
+The entry point is a flat `scripts/generate_dashboard_epub.py`, matching the
+existing `generate_*_epub.py` family. It puts `scripts/` on `sys.path` and calls
+into the package, so `scripts/` never becomes a Python package — `platformio.ini`
+loads five build hooks from that directory, and this keeps them untouched.
 
 `render.py` being pure is what makes the test suite possible without network
 access or recorded HTTP traffic.
@@ -158,7 +163,7 @@ page that is replaced daily.
 ## Workflow
 
 1. Put the device into File Transfer mode.
-2. Run `python3 -m scripts.dashboard`.
+2. Run `python3 scripts/generate_dashboard_epub.py`.
 3. Open `Dashboard.epub` on the device.
 
 If step 1 is skipped, step 2 still produces the file and tells you how to push it
