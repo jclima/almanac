@@ -47,3 +47,70 @@ def next_version(current, bump):
     if bump == "patch":
         return f"{major}.{minor}.{patch + 1}"
     raise ValueError(f"unknown bump: {bump!r}")
+
+
+# Only the [almanac] section's version. platformio.ini has other `version =`
+# keys (platform pins), and rewriting one of those would change the build.
+PIO_VERSION_RE = re.compile(r"(?m)^(\[almanac\]\n(?:(?!\[).*\n)*?version[ \t]*=[ \t]*)(\S+)")
+README_VERSION_RE = re.compile(r"(?m)^\*\*Version \d+\.\d+\.\d+\*\*")
+
+CONVENTIONAL_RE = re.compile(r"^(feat|fix|perf|refactor|docs|test|chore|style|ci|build)(?:\([^)]*\))?!?:\s*(.+)$")
+
+HEADINGS = [("feat", "New"), ("fix", "Fixed"), ("perf", "Performance")]
+
+
+def bump_platformio(text, version):
+    new, count = PIO_VERSION_RE.subn(lambda m: m.group(1) + version, text, count=1)
+    if count != 1:
+        raise ValueError("could not find [almanac] version in platformio.ini")
+    return new
+
+
+def bump_readme(text, version):
+    new, count = README_VERSION_RE.subn(f"**Version {version}**", text, count=1)
+    if count != 1:
+        raise ValueError("could not find a '**Version X.Y.Z**' marker in README.md")
+    return new
+
+
+def group_commits(lines):
+    groups = {"feat": [], "fix": [], "perf": [], "other": []}
+    for line in lines:
+        subject = line.strip()
+        # Merge commits describe nothing of their own and would duplicate the
+        # branch commits underneath them.
+        if not subject or subject.startswith("Merge "):
+            continue
+        # A previous release's own bump commit is not news in this release.
+        if subject.startswith("release:"):
+            continue
+        match = CONVENTIONAL_RE.match(subject)
+        if match:
+            kind, description = match.group(1), match.group(2)
+            groups[kind if kind in groups else "other"].append(description)
+        else:
+            # Keep it rather than drop it. A subject that does not follow the
+            # convention still describes something that shipped, and silently
+            # omitting it makes the notes quietly under-report the release.
+            groups["other"].append(subject)
+    return groups
+
+
+def render_notes(version, groups):
+    out = [f"# Almanac v{version}", ""]
+    out.append("These notes are generated from the commit log. Edit this file to")
+    out.append("say what the release means; the published release keeps whatever")
+    out.append("was committed at tag time.")
+    out.append("")
+    for key, heading in HEADINGS:
+        if groups.get(key):
+            out.append(f"## {heading}")
+            out.append("")
+            out.extend(f"- {item}" for item in groups[key])
+            out.append("")
+    if groups.get("other"):
+        out.append("## Also")
+        out.append("")
+        out.extend(f"- {item}" for item in groups["other"])
+        out.append("")
+    return "\n".join(out).rstrip() + "\n"
