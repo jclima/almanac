@@ -1245,18 +1245,26 @@ git commit -m "feat: add the news headline source"
   - `parse_states(payload: dict, lat: float, lon: float, radius_miles: float, place: str = "") -> FlightSnapshot` — pure. `place` is threaded through rather than patched in afterwards, so the returned dataclass is always fully initialized.
   - `fetch_flights(config: Config) -> Fetched[FlightSnapshot]` — never raises
 
-OpenSky's `states/all` returns positional arrays. Index meanings used here: 1 callsign, 2 origin country, 5 longitude, 6 latitude, 7 barometric altitude (metres), 8 on-ground flag, 9 velocity (m/s). Entries with no position are skipped; aircraft outside the radius are dropped (the bounding box is square, the radius is round). Anonymous OpenSky access is rate-limited, so this source failing is routine.
+OpenSky's `states/all` returns positional arrays. Index meanings used here: 1 callsign, 2 origin country, 5 longitude, 6 latitude, 7 barometric altitude (metres), 8 on-ground flag, 9 velocity (m/s), 13 geometric altitude. Entries with no position are skipped; aircraft outside the radius are dropped (the bounding box is square, the radius is round). Anonymous OpenSky access is rate-limited, so this source failing is routine.
+
+Each entry is parsed inside its own `try`, so one malformed record is skipped rather than blanking the whole section — the same per-item isolation `fetch_news` gives each feed. The `entry[13]` geometric-altitude fallback is length-checked, since a truncated record would otherwise overrun it. An aircraft with a known position but unknown altitude is **kept**, with `altitude_ft` set to `None`: callsign, distance and bearing are most of what the section is for, and dropping it would contradict `test_parse_states_tolerates_a_missing_altitude`.
 
 - [ ] **Step 1: Write the failing tests**
 
 Create `scripts/dashboard/tests/test_sources_flights.py`:
 
 ```python
+import http.client
+import urllib.error
+
 import pytest
 
+from dashboard import sources
+from dashboard.config import Config
 from dashboard.sources import MAX_AIRCRAFT, parse_states
 
 LAT, LON = 38.7223, -9.1393
+CONFIG = Config(place="Lisbon", lat=LAT, lon=LON)
 
 
 def state(icao, callsign, lon, lat, altitude_m=10000.0, on_ground=False, velocity=231.5):
@@ -1336,6 +1344,101 @@ def test_parse_states_threads_the_place_through():
     snapshot = parse_states({"states": []}, LAT, LON, 25.0, "Lisbon")
     assert snapshot.place == "Lisbon"
     assert snapshot.radius_miles == 25.0
+
+
+def test_parse_states_keeps_a_short_entry_with_unknown_altitude():
+    truncated = state("bad", "NOALT1", LON + 0.01, LAT, altitude_m=None)[:10]
+    good = state("good", "GOOD1", LON + 0.02, LAT)
+    snapshot = parse_states({"states": [truncated, good]}, LAT, LON, 25.0)
+    assert [c.callsign for c in snapshot.aircraft] == ["NOALT1", "GOOD1"]
+    assert snapshot.aircraft[0].altitude_ft is None
+
+
+def test_parse_states_skips_a_junk_entry_without_losing_the_rest():
+    good = state("good", "GOOD1", LON + 0.02, LAT)
+    snapshot = parse_states({"states": [None, good]}, LAT, LON, 25.0)
+    assert [c.callsign for c in snapshot.aircraft] == ["GOOD1"]
+
+
+def test_parse_states_reads_a_short_entry_when_altitude_is_present():
+    short = state("s", "SHORT1", LON + 0.01, LAT)[:10]
+    craft = parse_states({"states": [short]}, LAT, LON, 25.0).aircraft[0]
+    assert craft.callsign == "SHORT1"
+    assert craft.altitude_ft is not None
+
+
+def test_parse_states_survives_a_wholly_malformed_states_list():
+    snapshot = parse_states({"states": [None, 42, "junk", []]}, LAT, LON, 25.0)
+    assert snapshot.aircraft == []
+
+
+def test_parse_states_rejects_a_non_object_payload():
+    for payload in ([1, 2, 3], "text", None):
+        with pytest.raises(ValueError):
+            parse_states(payload, LAT, LON, 25.0)
+
+
+def test_fetch_flights_reports_the_opensky_rate_limit(monkeypatch):
+    def rate_limited(url):
+        raise urllib.error.HTTPError(url, 429, "Too Many Requests", None, None)
+
+    monkeypatch.setattr(sources, "_get_json", rate_limited)
+    result = sources.fetch_flights(CONFIG)
+    assert not result.ok
+    assert result.error == "OpenSky rate limit reached"
+
+
+def test_fetch_flights_reports_other_http_errors(monkeypatch):
+    def server_error(url):
+        raise urllib.error.HTTPError(url, 503, "Service Unavailable", None, None)
+
+    monkeypatch.setattr(sources, "_get_json", server_error)
+    result = sources.fetch_flights(CONFIG)
+    assert not result.ok
+    assert result.error == "OpenSky returned HTTP 503"
+
+
+def test_fetch_flights_survives_a_truncated_response(monkeypatch):
+    # http.client.HTTPException does not subclass OSError (see fetch_forecast's
+    # and fetch_news's equivalent regression tests), so a raw except (URLError,
+    # OSError) would let this propagate. fetch_flights must catch it too.
+    def truncated(url):
+        raise http.client.IncompleteRead(b"partial")
+
+    monkeypatch.setattr(sources, "_get_json", truncated)
+    result = sources.fetch_flights(CONFIG)
+    assert not result.ok
+    assert "could not reach OpenSky" in result.error
+
+
+def test_fetch_flights_survives_a_transport_error(monkeypatch):
+    def unreachable(url):
+        raise urllib.error.URLError("no route to host")
+
+    monkeypatch.setattr(sources, "_get_json", unreachable)
+    result = sources.fetch_flights(CONFIG)
+    assert not result.ok
+    assert "could not reach OpenSky" in result.error
+
+
+def test_fetch_flights_survives_a_non_object_payload(monkeypatch):
+    # A single malformed state entry is now skipped per-record (see the
+    # parse_states tests above), so it no longer reaches fetch_flights as an
+    # error. A non-dict payload still does: parse_states's isinstance guard
+    # raises ValueError, which fetch_flights must convert into a Fetched error.
+    monkeypatch.setattr(sources, "_get_json", lambda url: [1, 2, 3])
+    result = sources.fetch_flights(CONFIG)
+    assert not result.ok
+    assert "unexpected OpenSky response" in result.error
+
+
+def test_fetch_flights_returns_a_snapshot_on_success(monkeypatch):
+    payload = {"states": [state("4ca7b4", "RYR4TL", LON + 0.05, LAT + 0.05)]}
+    monkeypatch.setattr(sources, "_get_json", lambda url: payload)
+    result = sources.fetch_flights(CONFIG)
+    assert result.ok
+    assert result.value.place == "Lisbon"
+    assert len(result.value.aircraft) == 1
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -1380,33 +1483,43 @@ class FlightSnapshot:
 def parse_states(
     payload: dict, lat: float, lon: float, radius_miles: float, place: str = ""
 ) -> FlightSnapshot:
-    """Turn an OpenSky states/all response into a FlightSnapshot. Pure."""
+    """Turn an OpenSky states/all response into a FlightSnapshot.
+
+    Pure. Malformed entries are skipped; a non-dict payload raises ValueError.
+    """
+    if not isinstance(payload, dict):
+        raise ValueError(f"expected a JSON object, got {type(payload).__name__}")
     states = payload.get("states") or []
 
     found: list[Aircraft] = []
     for entry in states:
-        if len(entry) < 10:
-            continue
-        craft_lon, craft_lat = entry[5], entry[6]
-        if craft_lon is None or craft_lat is None or entry[8]:
-            continue  # no position, or on the ground
+        try:
+            if len(entry) < 10:
+                continue
+            craft_lon, craft_lat = entry[5], entry[6]
+            if craft_lon is None or craft_lat is None or entry[8]:
+                continue  # no position, or on the ground
 
-        distance = distance_miles(lat, lon, craft_lat, craft_lon)
-        if distance > radius_miles:
-            continue  # the bounding box is square; the radius is not
+            distance = distance_miles(lat, lon, craft_lat, craft_lon)
+            if distance > radius_miles:
+                continue  # the bounding box is square; the radius is not
 
-        altitude_m = entry[7] if entry[7] is not None else entry[13]
-        velocity = entry[9]
-        found.append(
-            Aircraft(
-                callsign=str(entry[1] or "").strip() or str(entry[0] or "").strip(),
-                origin_country=str(entry[2] or "").strip(),
-                altitude_ft=int(altitude_m * METRES_TO_FEET) if altitude_m is not None else None,
-                speed_kts=int(velocity * MPS_TO_KNOTS) if velocity is not None else None,
-                distance_miles=distance,
-                bearing=compass_point(initial_bearing_degrees(lat, lon, craft_lat, craft_lon)),
+            altitude_m = entry[7]
+            if altitude_m is None and len(entry) > 13:
+                altitude_m = entry[13]
+            velocity = entry[9]
+            found.append(
+                Aircraft(
+                    callsign=str(entry[1] or "").strip() or str(entry[0] or "").strip(),
+                    origin_country=str(entry[2] or "").strip(),
+                    altitude_ft=int(altitude_m * METRES_TO_FEET) if altitude_m is not None else None,
+                    speed_kts=int(velocity * MPS_TO_KNOTS) if velocity is not None else None,
+                    distance_miles=distance,
+                    bearing=compass_point(initial_bearing_degrees(lat, lon, craft_lat, craft_lon)),
+                )
             )
-        )
+        except (TypeError, ValueError, IndexError):
+            continue  # one malformed record must not blank the whole section
 
     found.sort(key=lambda craft: craft.distance_miles)
     return FlightSnapshot(place=place, radius_miles=radius_miles, aircraft=found[:MAX_AIRCRAFT])
@@ -1427,7 +1540,7 @@ def fetch_flights(config: Config) -> Fetched[FlightSnapshot]:
         if exc.code == 429:
             return Fetched(error="OpenSky rate limit reached")
         return Fetched(error=f"OpenSky returned HTTP {exc.code}")
-    except (urllib.error.URLError, OSError) as exc:
+    except (urllib.error.URLError, OSError, http.client.HTTPException) as exc:
         return Fetched(error=f"could not reach OpenSky ({exc})")
     except (ValueError, KeyError, IndexError, TypeError) as exc:
         return Fetched(error=f"unexpected OpenSky response ({exc})")
@@ -1438,12 +1551,12 @@ def fetch_flights(config: Config) -> Fetched[FlightSnapshot]:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `.venv/bin/pytest scripts/dashboard/tests/test_sources_flights.py -v`
-Expected: PASS, 11 tests
+Expected: PASS, 22 tests
 
 - [ ] **Step 5: Run the whole suite**
 
 Run: `.venv/bin/pytest scripts/dashboard/tests -v`
-Expected: PASS, all tests from Tasks 1–5
+Expected: PASS, 82 tests — everything from Tasks 1–5
 
 - [ ] **Step 6: Commit**
 
