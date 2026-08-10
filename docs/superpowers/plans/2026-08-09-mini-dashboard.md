@@ -1948,6 +1948,8 @@ git commit -m "feat: add dashboard section rendering"
 
 The EPUB structure copies `scripts/generate_userguide_epub.py` exactly, including three details the firmware depends on: `uid='cover-image'` on the cover item, the EPUB 2 `<meta name="cover">` declaration that the X4's OPF lookup reads, and **excluding the nav document from the spine** (the firmware ignores `linear="no"`, so an included nav shows up as a readable page).
 
+All three are pinned by tests that were mutation-checked, not merely written. The cover assertion in particular must check `id="cover-image"` and not only `content="cover-image"`: `add_metadata`'s content value is a hardcoded literal, so asserting it alone cannot detect the manifest item's uid drifting away from it — the exact mismatch that would ship a book the X4 renders with no cover.
+
 - [ ] **Step 1: Write the failing tests**
 
 Create `scripts/dashboard/tests/test_deliver.py`:
@@ -2019,6 +2021,20 @@ def test_build_epub_creates_missing_parent_directories(tmp_path):
     target = tmp_path / "build" / "nested" / "D.epub"
     out = build_epub(SECTIONS, make_cover_png(dt.date(2026, 8, 9), "Lisbon"), target, GENERATED)
     assert out.is_file()
+
+
+def test_build_epub_links_the_cover_item_to_the_epub2_metadata(tmp_path):
+    # The X4 resolves the cover by matching <meta name="cover" content="X"/>
+    # against a manifest item whose id is X. Asserting only that the meta tag
+    # exists cannot catch the two drifting apart, so pin both halves and the
+    # EPUB 3 manifest property alongside them.
+    out = build_epub(SECTIONS, make_cover_png(dt.date(2026, 8, 9), "Lisbon"), tmp_path / "D.epub", GENERATED)
+    with zipfile.ZipFile(out) as archive:
+        opf = next(n for n in archive.namelist() if n.endswith(".opf"))
+        manifest = archive.read(opf).decode("utf-8")
+    assert 'id="cover-image"' in manifest
+    assert 'content="cover-image"' in manifest
+    assert 'properties="cover-image"' in manifest
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -2180,7 +2196,7 @@ def build_epub(
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `.venv/bin/pytest scripts/dashboard/tests/test_deliver.py -v`
-Expected: PASS, 7 tests
+Expected: PASS, 8 tests
 
 - [ ] **Step 5: Commit**
 
