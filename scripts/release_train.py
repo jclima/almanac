@@ -152,6 +152,20 @@ def main(argv=None):
         )
         return 1
 
+    # README.md's version marker must exist too, checked here rather than left
+    # for bump_readme() to discover during the write phase: open(path, "w")
+    # truncates the file before its write() argument is evaluated, so finding
+    # out there is too late -- README.md would already be emptied. Read once
+    # and reuse this text for the actual bump below.
+    readme_text = open("README.md").read()
+    if README_VERSION_RE.search(readme_text) is None:
+        print(
+            "error: README.md has no '**Version X.Y.Z**' marker; "
+            "resolve that before releasing",
+            file=sys.stderr,
+        )
+        return 1
+
     subjects = git("log", "--no-merges", "--format=%s", f"{previous}..HEAD").splitlines()
     notes_path = os.path.join("docs", "release-notes", f"{tag}.md")
     notes_exist = os.path.exists(notes_path)
@@ -166,7 +180,6 @@ def main(argv=None):
         return 0
 
     open("platformio.ini", "w").write(bump_platformio(ini_text, version))
-    readme_text = open("README.md").read()
     open("README.md", "w").write(bump_readme(readme_text, version))
     # Hand-written notes always win. This is what lets a release that deserves
     # real prose get it, without the button needing a second step.
