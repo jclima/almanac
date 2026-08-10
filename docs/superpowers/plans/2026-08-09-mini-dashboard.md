@@ -2229,7 +2229,9 @@ git commit -m "feat: add dashboard cover and EPUB packaging"
 
 The device's HTTP form field is `file` and the target directory is the `path` query parameter, matching the documented `curl -X POST -F "file=@mybook.epub" "http://almanac.local/upload?path=/Books"`.
 
-**Exit codes:** 0 success, 1 every source failed (the EPUB is still built and still uploaded), 2 config error, 3 upload rejected by the device.
+**Exit codes:** 0 success, 1 every source failed (the EPUB is still built and still uploaded), 2 config error, 3 upload rejected by the device, 4 the EPUB could not be written.
+
+**`upload()` must `POST /delete` the target path first.** The device refuses an upload whose target already exists ([AlmanacWebServer.cpp:714](../../../src/network/AlmanacWebServer.cpp)), so a fixed filename would be rejected from the second run onward. Deleting first also fires `clearBookCache`, which is what makes the new copy re-render rather than showing yesterday's page. Ignore any failure from the delete — on the first run there is nothing to remove.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2369,7 +2371,8 @@ Create `scripts/dashboard/__main__.py`:
 
 Invoked through scripts/generate_dashboard_epub.py.
 
-Exit codes: 0 success, 1 every source failed, 2 config error, 3 upload rejected.
+Exit codes: 0 success, 1 every source failed, 2 config error, 3 upload rejected,
+4 the EPUB could not be written.
 """
 
 from __future__ import annotations
