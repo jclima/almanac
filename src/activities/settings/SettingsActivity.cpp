@@ -86,6 +86,9 @@ void SettingsActivity::rebuildSettingsLists() {
   }
   systemSettings.push_back(SettingInfo::Action(StrId::STR_SD_FIRMWARE_UPDATE, SettingAction::SdFirmwareUpdate));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_LANGUAGE, SettingAction::Language));
+  // Informational only: SettingAction::None already no-ops on confirm (see the ACTION
+  // switch below), so this row shows the running build without being pressable.
+  systemSettings.push_back(SettingInfo::Action(StrId::STR_FIRMWARE_VERSION, SettingAction::None));
   readerSettings.insert(readerSettings.begin(),
                         SettingInfo::Action(StrId::STR_TEXT_SETTINGS, SettingAction::TextSettings));
   readerSettings.insert(readerSettings.begin() + 1,
@@ -528,6 +531,8 @@ void SettingsActivity::render(RenderLock&&) {
           } else {
             valueText = std::to_string(SETTINGS.*(setting.valuePtr));
           }
+        } else if (setting.type == SettingType::ACTION && setting.nameId == StrId::STR_FIRMWARE_VERSION) {
+          valueText = ALMANAC_VERSION;
         }
         return valueText;
       },
