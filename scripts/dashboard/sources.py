@@ -21,6 +21,7 @@ from typing import Generic, TypeVar
 import feedparser
 
 from .config import Config
+from .geo import bounding_box, compass_point, distance_miles, initial_bearing_degrees
 
 T = TypeVar("T")
 
@@ -269,3 +270,84 @@ def fetch_news(config: Config) -> Fetched[NewsDigest]:
             results.append(FeedResult(name=feed.name, headlines=[], error=f"unreachable ({exc})"))
 
     return Fetched(value=NewsDigest(feeds=results))
+
+
+OPENSKY_URL = "https://opensky-network.org/api/states/all"
+MAX_AIRCRAFT = 12
+METRES_TO_FEET = 3.280839895
+MPS_TO_KNOTS = 1.943844
+
+
+@dataclass(frozen=True)
+class Aircraft:
+    callsign: str
+    origin_country: str
+    altitude_ft: int | None
+    speed_kts: int | None
+    distance_miles: float
+    bearing: str
+
+
+@dataclass(frozen=True)
+class FlightSnapshot:
+    place: str
+    radius_miles: float
+    aircraft: list[Aircraft]
+
+
+def parse_states(
+    payload: dict, lat: float, lon: float, radius_miles: float, place: str = ""
+) -> FlightSnapshot:
+    """Turn an OpenSky states/all response into a FlightSnapshot. Pure."""
+    states = payload.get("states") or []
+
+    found: list[Aircraft] = []
+    for entry in states:
+        if len(entry) < 10:
+            continue
+        craft_lon, craft_lat = entry[5], entry[6]
+        if craft_lon is None or craft_lat is None or entry[8]:
+            continue  # no position, or on the ground
+
+        distance = distance_miles(lat, lon, craft_lat, craft_lon)
+        if distance > radius_miles:
+            continue  # the bounding box is square; the radius is not
+
+        altitude_m = entry[7] if entry[7] is not None else entry[13]
+        velocity = entry[9]
+        found.append(
+            Aircraft(
+                callsign=str(entry[1] or "").strip() or str(entry[0] or "").strip(),
+                origin_country=str(entry[2] or "").strip(),
+                altitude_ft=int(altitude_m * METRES_TO_FEET) if altitude_m is not None else None,
+                speed_kts=int(velocity * MPS_TO_KNOTS) if velocity is not None else None,
+                distance_miles=distance,
+                bearing=compass_point(initial_bearing_degrees(lat, lon, craft_lat, craft_lon)),
+            )
+        )
+
+    found.sort(key=lambda craft: craft.distance_miles)
+    return FlightSnapshot(place=place, radius_miles=radius_miles, aircraft=found[:MAX_AIRCRAFT])
+
+
+def fetch_flights(config: Config) -> Fetched[FlightSnapshot]:
+    """Fetch aircraft in range. Anonymous OpenSky is rate-limited; failure is routine."""
+    box = bounding_box(config.lat, config.lon, config.radius_miles)
+    url = (
+        f"{OPENSKY_URL}?lamin={box.lat_min:.4f}&lomin={box.lon_min:.4f}"
+        f"&lamax={box.lat_max:.4f}&lomax={box.lon_max:.4f}"
+    )
+    try:
+        snapshot = parse_states(
+            _get_json(url), config.lat, config.lon, config.radius_miles, config.place
+        )
+    except urllib.error.HTTPError as exc:
+        if exc.code == 429:
+            return Fetched(error="OpenSky rate limit reached")
+        return Fetched(error=f"OpenSky returned HTTP {exc.code}")
+    except (urllib.error.URLError, OSError, http.client.HTTPException) as exc:
+        return Fetched(error=f"could not reach OpenSky ({exc})")
+    except (ValueError, KeyError, IndexError, TypeError) as exc:
+        return Fetched(error=f"unexpected OpenSky response ({exc})")
+
+    return Fetched(value=snapshot)
