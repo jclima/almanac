@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <cstdlib>
+
 #include "components/themes/Game2048Layout.h"
 
 namespace {
@@ -61,7 +63,7 @@ TEST(Game2048Layout, BoardIsSquareAndCentred) {
 
   const int leftMargin = topLeft.x - bounds.x;
   const int rightMargin = (bounds.x + bounds.width) - (bottomRight.x + bottomRight.width);
-  EXPECT_LE(leftMargin - rightMargin, 2 * Game2048Layout::GAP);
+  EXPECT_LE(std::abs(leftMargin - rightMargin), 2 * Game2048Layout::GAP);
 }
 
 TEST(Game2048Layout, GeometryIsCompileTimeConstant) {
