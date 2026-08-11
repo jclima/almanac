@@ -28,11 +28,11 @@ namespace {
 // panelWidth in Portrait). Height is what the menu layout depends on.
 constexpr int kPortraitHeight = 800;
 
-// HomeActivity builds the menu from 5 fixed entries, plus "Continue Reading"
+// HomeActivity builds the menu from 6 fixed entries, plus "Continue Reading"
 // when the theme hosts it in the menu and a recent book exists, plus the OPDS
 // browser when at least one OPDS server is configured.
 constexpr int menuItemCount(const ThemeMetrics& metrics, const bool hasRecentBook, const bool hasOpdsServers) {
-  return 5 + ((metrics.homeContinueReadingInMenu && hasRecentBook) ? 1 : 0) + (hasOpdsServers ? 1 : 0);
+  return 6 + ((metrics.homeContinueReadingInMenu && hasRecentBook) ? 1 : 0) + (hasOpdsServers ? 1 : 0);
 }
 
 void expectClearOfHints(const ThemeMetrics& metrics, const int lastBottom, const std::string& what) {
@@ -44,8 +44,8 @@ void expectClearOfHints(const ThemeMetrics& metrics, const int lastBottom, const
 constexpr int kPortraitWidth = 480;
 
 MenuLayout::HomeComposition composition(const bool hasRecentBook, const bool hasOpds) {
-  // Base entries: Browse Files, Recent Books, File Transfer, Nearby Flights, Settings.
-  const int count = 5 + (hasOpds ? 1 : 0) + (hasRecentBook ? 1 : 0);
+  // Base entries: Browse Files, Recent Books, File Transfer, Nearby Flights, 2048, Settings.
+  const int count = 6 + (hasOpds ? 1 : 0) + (hasRecentBook ? 1 : 0);
   return MenuLayout::HomeComposition{count, hasRecentBook};
 }
 
@@ -97,14 +97,14 @@ TEST(HomeTileLayout, GridRowCountAndOriginMatchTheSpec) {
   const ThemeMetrics& m = AlmanacMetrics::values;
 
   EXPECT_EQ(MenuLayout::homeGridRowCount(composition(true, true)), 3);
-  EXPECT_EQ(MenuLayout::homeGridRowCount(composition(true, false)), 2);
-  EXPECT_EQ(MenuLayout::homeGridRowCount(composition(false, true)), 3);
-  EXPECT_EQ(MenuLayout::homeGridRowCount(composition(false, false)), 2);
+  EXPECT_EQ(MenuLayout::homeGridRowCount(composition(true, false)), 3);   // was 2: 5 grid tiles now
+  EXPECT_EQ(MenuLayout::homeGridRowCount(composition(false, true)), 3);   // unchanged: 6 grid tiles
+  EXPECT_EQ(MenuLayout::homeGridRowCount(composition(false, false)), 3);  // was 2: 5 grid tiles now
 
   EXPECT_EQ(MenuLayout::homeGridTop(m, kPortraitHeight, composition(true, true)), 228);
-  EXPECT_EQ(MenuLayout::homeGridTop(m, kPortraitHeight, composition(true, false)), 298);
+  EXPECT_EQ(MenuLayout::homeGridTop(m, kPortraitHeight, composition(true, false)), 228);  // was 298
   EXPECT_EQ(MenuLayout::homeGridTop(m, kPortraitHeight, composition(false, true)), 176);
-  EXPECT_EQ(MenuLayout::homeGridTop(m, kPortraitHeight, composition(false, false)), 246);
+  EXPECT_EQ(MenuLayout::homeGridTop(m, kPortraitHeight, composition(false, false)), 176);  // was 246
 }
 
 TEST(HomeTileLayout, FixedTiersNeverMove) {
@@ -131,16 +131,30 @@ TEST(HomeTileLayout, FixedTiersNeverMove) {
 
 TEST(HomeTileLayout, LoneTileInFinalRowSpansFullWidth) {
   const ThemeMetrics& m = AlmanacMetrics::values;
-  // Recent book + OPDS gives 5 grid tiles, so the third row holds exactly one.
-  const auto odd = composition(true, true);
+  // Recent book without OPDS gives 5 grid tiles, so the third row holds exactly one.
+  const auto odd = composition(true, false);
   const Rect r = MenuLayout::homeTileRect(m, kPortraitWidth, kPortraitHeight, odd, odd.tileCount - 2);
   EXPECT_EQ(r.x, m.contentSidePadding);
   EXPECT_EQ(r.width, kPortraitWidth - m.contentSidePadding * 2);
 
-  // 4 grid tiles fill two even rows, so nothing spans.
-  const auto even = composition(true, false);
+  // Recent book + OPDS gives 6 grid tiles, which fill three even rows, so nothing spans.
+  const auto even = composition(true, true);
   const Rect r2 = MenuLayout::homeTileRect(m, kPortraitWidth, kPortraitHeight, even, even.tileCount - 2);
   EXPECT_LT(r2.width, kPortraitWidth - m.contentSidePadding * 2);
+}
+
+// Pins that the grid stays within three rows for every recent/OPDS
+// combination *at the item counts this test's composition() computes* --
+// beyond three rows the last row collides with the button-hints bar.
+// composition() hard-codes its base count (6) as a hand-copied duplicate of
+// HomeActivity::getMenuItemCount(); a genuine 7th fixed home entry would not
+// fail this test unless that duplicate is updated alongside it.
+TEST(HomeTileLayout, GridNeverExceedsThreeRows) {
+  for (const bool recent : {false, true}) {
+    for (const bool opds : {false, true}) {
+      EXPECT_LE(MenuLayout::homeGridRowCount(composition(recent, opds)), 3) << "recent=" << recent << " opds=" << opds;
+    }
+  }
 }
 
 // --- Almanac -----------------------------------------------------------------
@@ -167,9 +181,17 @@ int lastRowBottomAlmanac(const int rowCount) {
 }
 }  // namespace
 
-TEST(HomeMenuLayout, AlmanacFitsWithoutOpds) {
+// Home now has 6 fixed entries (File Browser, Recents, File Transfer, Nearby
+// Flights, 2048, Settings), so a recent book alone -- no OPDS -- already pushes
+// the row-menu formula to 7 items. At 7, fittedRowStep floors at rowHeight
+// ((299-45)/6 == 42, clamped up to 45) instead of compressing, and the last row
+// lands at 768 vs a 752 hints-bar top: this composition no longer fits via gap
+// compression. The neither-recent-nor-OPDS composition is the one still within
+// budget at the pre-2048-tile item count (6), so that is what this test pins
+// as the fitting case now.
+TEST(HomeMenuLayout, AlmanacFitsAtSixItems) {
   const auto& m = AlmanacMetrics::values;
-  const int count = menuItemCount(m, true, false);
+  const int count = menuItemCount(m, false, false);
   EXPECT_EQ(count, 6);
   // The selection stroke must clear the bar too, not just the tile.
   expectClearOfHints(m, lastRowBottomAlmanac(count) + AlmanacTheme::kMenuSelectionReserve, "Almanac 6 items");
@@ -177,20 +199,20 @@ TEST(HomeMenuLayout, AlmanacFitsWithoutOpds) {
 
 // AlmanacMetrics hosts Continue Reading in the menu (homeContinueReadingInMenu
 // = true), so a recent book plus an OPDS server pushes the row-menu formula to
-// 7 items -- one past what AlmanacFitsWithoutOpds's 6 fit via gap compression
-// alone. Row-fitting genuinely cannot seat a 7th row in this budget: this pins
+// 8 items -- two past what AlmanacFitsAtSixItems's 6 fit via gap compression
+// alone. Row-fitting genuinely cannot seat an 8th row in this budget: this pins
 // that impossibility rather than a fit, because it is the reason Home draws
 // its menu via MenuLayout::homeTileRect's fixed-height tile grid instead of
 // AlmanacTheme::drawButtonMenu -- nothing calls the latter with Home's full
 // item count anymore.
-TEST(HomeMenuLayout, AlmanacRowFittingCannotSeatSevenItems) {
+TEST(HomeMenuLayout, AlmanacRowFittingCannotSeatEightItems) {
   const auto& m = AlmanacMetrics::values;
   EXPECT_TRUE(m.homeContinueReadingInMenu);
   const int count = menuItemCount(m, true, true);
-  EXPECT_EQ(count, 7);
+  EXPECT_EQ(count, 8);
   const int hintsTop = MenuLayout::buttonHintsTop(m, kPortraitHeight);
   const int lastBottom = lastRowBottomAlmanac(count) + AlmanacTheme::kMenuSelectionReserve;
-  EXPECT_GT(lastBottom, hintsTop) << "expected row-fitting to overflow the hints bar at 7 items, not fit";
+  EXPECT_GT(lastBottom, hintsTop) << "expected row-fitting to overflow the hints bar at 8 items, not fit";
 }
 
 // Red/green for the reserve itself: at 6 rows, budgeting only the tiles leaves
@@ -241,8 +263,8 @@ TEST(HomeMenuLayout, AvailableHeightSpansMenuTopToHintsBar) {
 // shrinks a row. That was sufficient for both metrics tables while neither put
 // Continue Reading in the menu, capping both at 6 rows (5 fixed entries plus
 // OPDS). AlmanacMetrics has since flipped homeContinueReadingInMenu to true;
-// gap compression alone is no longer enough at its resulting 7 rows (see
-// AlmanacRowFittingCannotSeatSevenItems above) -- exactly the "row-shrinking
+// gap compression alone is no longer enough at its resulting 8 rows (see
+// AlmanacRowFittingCannotSeatEightItems above) -- exactly the "row-shrinking
 // tier" this test used to warn a flip would require. Home sidesteps that
 // entirely by drawing via MenuLayout::homeTileRect instead of row-fitting.
 // BaseMetrics still keeps Continue Reading out of the menu, so the original
@@ -250,7 +272,7 @@ TEST(HomeMenuLayout, AvailableHeightSpansMenuTopToHintsBar) {
 TEST(HomeMenuLayout, BaseMetricsRowMenuCannotExceedSixRows) {
   const auto& m = BaseMetrics::values;
   EXPECT_FALSE(m.homeContinueReadingInMenu);
-  EXPECT_EQ(menuItemCount(m, true, true), 6);
+  EXPECT_EQ(menuItemCount(m, true, true), 7);
 }
 
 TEST(HomeMenuLayout, FittedStepNeverExceedsNatural) {

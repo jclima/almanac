@@ -33,6 +33,8 @@ class HomeActivity final : public Activity {
     ++i;
     if (item == HomeMenuItem::NEARBY_FLIGHTS) return i;
     ++i;
+    if (item == HomeMenuItem::GAME_2048) return i;
+    ++i;
     if (item == HomeMenuItem::SETTINGS_MENU) return i;
     return 0;
   }
@@ -45,6 +47,7 @@ class HomeActivity final : public Activity {
     if (hasOpdsUrl && idx == i++) return HomeMenuItem::OPDS_BROWSER;
     if (idx == i++) return HomeMenuItem::FILE_TRANSFER;
     if (idx == i++) return HomeMenuItem::NEARBY_FLIGHTS;
+    if (idx == i++) return HomeMenuItem::GAME_2048;
     if (idx == i) return HomeMenuItem::SETTINGS_MENU;
     return HomeMenuItem::NONE;
   }
@@ -55,6 +58,7 @@ class HomeActivity final : public Activity {
   void onFileTransferOpen();
   void onOpdsBrowserOpen();
   void onNearbyFlightsOpen();
+  void onGame2048Open();
 
   // Shared by render() and loop() so drawn tiles and touch targets agree.
   MenuLayout::HomeComposition menuComposition() const;

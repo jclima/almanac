@@ -42,7 +42,7 @@ bool HomeActivity::hasContinueReadingTile() const {
 }
 
 int HomeActivity::getMenuItemCount() const {
-  int count = 5;  // File Browser, Recents, File transfer, Nearby Flights, Settings
+  int count = 6;  // File Browser, Recents, File transfer, Nearby Flights, 2048, Settings
   if (hasContinueReadingTile()) {
     count++;
   }
@@ -128,6 +128,9 @@ void HomeActivity::loop() {
         break;
       case HomeMenuItem::NEARBY_FLIGHTS:
         onNearbyFlightsOpen();
+        break;
+      case HomeMenuItem::GAME_2048:
+        onGame2048Open();
         break;
       case HomeMenuItem::SETTINGS_MENU:
         onSettingsOpen();
@@ -217,8 +220,8 @@ void HomeActivity::render(RenderLock&&) {
   GUI.drawHomeMasthead(renderer, MenuLayout::homeMastheadRect(pageWidth));
 
   // Build menu items dynamically
-  std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_FILE_TRANSFER),
-                                        tr(STR_NEARBY_FLIGHTS), tr(STR_SETTINGS_TITLE)};
+  std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES),   tr(STR_MENU_RECENT_BOOKS), tr(STR_FILE_TRANSFER),
+                                        tr(STR_NEARBY_FLIGHTS), tr(STR_GAME_2048),         tr(STR_SETTINGS_TITLE)};
 
   if (hasOpdsServers) {
     menuItems.insert(menuItems.begin() + 2, tr(STR_OPDS_BROWSER));
@@ -272,5 +275,7 @@ void HomeActivity::onSettingsOpen() { activityManager.goToSettings(); }
 void HomeActivity::onFileTransferOpen() { activityManager.goToFileTransfer(); }
 
 void HomeActivity::onNearbyFlightsOpen() { activityManager.goToNearbyFlights(); }
+
+void HomeActivity::onGame2048Open() { activityManager.goToGame2048(); }
 
 void HomeActivity::onOpdsBrowserOpen() { activityManager.goToBrowser(); }
