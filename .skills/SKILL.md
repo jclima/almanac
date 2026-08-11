@@ -459,34 +459,62 @@ void onExit()   { /* free: vTaskDelete, free buffer, close member FsFiles */ Act
 
 ### Global Font Loading
 
-**Source**: [src/main.cpp:40-115](../src/main.cpp)
+**Source**: globals at [src/main.cpp:52-110](../src/main.cpp), registration at
+[src/main.cpp:243-256](../src/main.cpp)
 
 **All fonts are loaded as global static objects** at firmware startup:
 - Noto Serif: 12, 14, 16, 18pt (4 styles each: regular, bold, italic, bold-italic)
 - Noto Sans: 12, 14, 16, 18pt (4 styles each)
-- Ubuntu UI fonts: 10, 12pt (2 styles)
+- Ubuntu UI: 10, 12pt (regular and bold only — **no italic**)
+- Small: one style only
 
 **Total**: ~80+ global `EpdFont` and `EpdFontFamily` objects
+
+#### The font IDs
+
+These are the only valid IDs. They are `#define`s in
+[src/fontIds.h](../src/fontIds.h), **not** an enum, and the names do not follow a
+`FONT_*` pattern:
+
+| ID | Family | Styles |
+|---|---|---|
+| `NOTOSERIF_12_FONT_ID` … `NOTOSERIF_18_FONT_ID` | Noto Serif 12/14/16/18 | regular, bold, italic, bold-italic |
+| `NOTOSANS_12_FONT_ID` … `NOTOSANS_18_FONT_ID` | Noto Sans 12/14/16/18 | regular, bold, italic, bold-italic |
+| `UI_10_FONT_ID`, `UI_12_FONT_ID` | Ubuntu UI 10/12 | regular, bold |
+| `SMALL_FONT_ID` | Small | regular |
+
+`UI_12_FONT_ID` is the workhorse for activity chrome; `SMALL_FONT_ID` suits
+captions and version strings.
 
 **Compilation Flag**:
 ```cpp
 #ifndef OMIT_FONTS
-  // Most fonts loaded here
+  // Noto Serif 12/16/18 and all four Noto Sans sizes
 #endif
 ```
+
+`OMIT_FONTS` drops only those seven. `NOTOSERIF_14_FONT_ID` (the reader default),
+`UI_10_FONT_ID`, `UI_12_FONT_ID`, and `SMALL_FONT_ID` are registered
+unconditionally, so UI code can rely on them — but a comment claiming *any* Noto
+ID is always available is wrong.
 
 **Implications**:
 - Fonts stored in **Flash** (marked as `static const` in `lib/EpdFont/builtinFonts/`)
 - Font rendering data cached in **DRAM** when first used
 - `OMIT_FONTS` can reduce binary size for minimal builds
-- Font IDs defined in [src/fontIds.h](../src/fontIds.h)
+- An unregistered ID renders nothing — it fails silently, not loudly
 
-**Usage**:
+**Usage**: activities *consume* IDs; they never register them. `insertFont()` is
+called only by `main.cpp` at startup and by `SdCardFontManager` for SD-loaded
+fonts. Do not call it from an activity.
+
 ```cpp
 #include "fontIds.h"
 
-renderer.insertFont(FONT_UI_MEDIUM, ui12FontFamily);
-renderer.drawText(FONT_UI_MEDIUM, x, y, "Hello", true);
+renderer.drawText(UI_12_FONT_ID, x, y, tr(STR_HELLO), true);
+renderer.drawText(UI_12_FONT_ID, x, y, tr(STR_HELLO), true, EpdFontFamily::BOLD);
+const int width = renderer.getTextWidth(UI_12_FONT_ID, tr(STR_HELLO));
+const int lineHeight = renderer.getLineHeight(UI_12_FONT_ID);
 ```
 
 ---
@@ -779,14 +807,17 @@ Tested in all 4 orientations with 5MB+ files.
 ```cpp
 #include <I18n.h>
 // Use tr() macro with StrId enum (defined in generated I18nKeys.h)
-renderer.drawText(FONT_UI, x, y, tr(STR_LOADING), true);
+renderer.drawText(UI_12_FONT_ID, x, y, tr(STR_LOADING), true);
 ```
 
 **To add custom fonts**:
 1. Place source fonts in `lib/EpdFont/fontsrc/` (gitignored)
 2. Run conversion script (see `lib/EpdFont/README`)
-3. Update global font objects in `src/main.cpp:40-115`
-4. Add font ID constant to `src/fontIds.h`
+3. Declare the `EpdFontFamily` global in `src/main.cpp:52-110` and register it
+   with `renderer.insertFont(...)` in the block at `src/main.cpp:243-256`
+4. Regenerate the IDs with `./lib/EpdFont/scripts/build-font-ids.sh` — do **not**
+   hand-edit `src/fontIds.h`. It is generated (though, unlike the i18n headers,
+   it *is* tracked in git, so commit the regenerated file)
 
 ---
 
