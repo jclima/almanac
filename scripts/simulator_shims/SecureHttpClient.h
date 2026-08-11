@@ -9,9 +9,12 @@
 // simulator is not built in CI (ci.yml builds default + sticky only), which is
 // why the drift went unnoticed.
 //
-// This is that shim plus those three members. It is reached only through the
-// -Isim_shims include path in [env:simulator]; device builds resolve
-// <SecureHttpClient.h> to the real freeink-sdk header and never see this file.
+// This is that shim plus those three members. It is installed over the libdep's
+// own copy by scripts/patch_simulator_shim.py, a pre: script on [env:simulator].
+// An include path cannot do the job: PlatformIO appends build_flags include dirs
+// after library ones, so the libdep always wins the lookup for
+// <SecureHttpClient.h>. Device builds resolve that name to the real freeink-sdk
+// header and never see this file.
 // Keep it in sync with the external shim if that gains members we use.
 
 #include <algorithm>
