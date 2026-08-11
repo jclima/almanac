@@ -160,6 +160,35 @@ jobs:
       - name: Run tests
         run: ctest --test-dir build/test --output-on-failure -j
 
+  python-tests:
+    runs-on: ubuntu-latest
+    steps:
+      # No submodules: these tests cover host-side tooling in scripts/ only and
+      # never reach freeink-sdk, so cloning it would cost minutes for nothing.
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: false
+
+      # Installs the declared file rather than a hand-listed subset, so a
+      # dependency added to the code but not to requirements.txt fails here
+      # instead of on someone's machine.
+      - name: Install script dependencies
+        run: uv pip install --system -r scripts/requirements.txt
+
+      # pytest.ini supplies testpaths and pythonpath. The suite makes no network
+      # calls -- every source is exercised against fixture payloads -- so this
+      # job is hermetic and safe to run on every PR.
+      - name: Run Python tests
+        run: pytest -q
+
   # This job is used as the PR required actions check, allows for changes to other steps in the future without breaking
   # PR requirements.
   test-status:
@@ -169,6 +198,7 @@ jobs:
       - clang-format
       - cppcheck
       - unit-tests
+      - python-tests
     if: always()
     runs-on: ubuntu-latest
     steps:

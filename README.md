@@ -300,8 +300,9 @@ hash of each book's path beneath it, so renaming it would silently orphan every
 book's progress and bookmarks.
 
 See [docs/](docs/) for the file formats, activity manager, i18n and webserver
-documentation, and [CLAUDE.md](CLAUDE.md) for the engineering constraints any
-change has to respect.
+documentation, [docs/mini-dashboard.md](docs/mini-dashboard.md) for the
+host-side weather/news/sky/flights page generator, and [CLAUDE.md](CLAUDE.md)
+for the engineering constraints any change has to respect.
 
 [SCOPE.md](SCOPE.md) is the one to read before proposing a feature: it records
 what this fork deliberately will and will not do, and the test a new feature has
