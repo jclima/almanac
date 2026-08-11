@@ -1,0 +1,89 @@
+<svg viewBox="0 0 560 900" xmlns="http://www.w3.org/2000/svg" font-family="Helvetica, Arial, sans-serif">
+  <title>Almanac — 2048 board (illustrative mockup)</title>
+
+  <defs>
+    <!-- Tiles at DITHER_FROM_EXPONENT (7, i.e. 128) and above get a
+         Color::LightGray wash via fillRectDither. On a 1-bit panel that is an
+         ordered dot pattern, not a grey fill, so it is drawn as one here. -->
+    <pattern id="dither" width="4" height="4" patternUnits="userSpaceOnUse">
+      <rect width="4" height="4" fill="#ffffff"/>
+      <rect x="0" y="0" width="1" height="1" fill="#000000"/>
+      <rect x="2" y="2" width="1" height="1" fill="#000000"/>
+    </pattern>
+  </defs>
+
+  <rect x="0" y="0" width="560" height="900" fill="#f4f4f4"/>
+
+  <text x="280" y="26" text-anchor="middle" font-size="13" fill="#666">
+    Illustrative UI mockup of the 2048 board — not an actual device photo
+  </text>
+
+  <!-- Device bezel -->
+  <rect x="20" y="40" width="520" height="820" rx="26" fill="#161616"/>
+  <circle cx="280" cy="60" r="3" fill="#3a3a3a"/>
+
+  <!-- Screen -->
+  <rect x="40" y="60" width="480" height="780" fill="#ffffff"/>
+
+  <!-- Header bar, as on every Almanac screen -->
+  <rect x="40" y="60" width="480" height="45" fill="#000000"/>
+  <text x="504" y="88" text-anchor="end" font-size="16" fill="#ffffff">82%</text>
+
+  <!-- Score line: drawCenteredText(UI_12_FONT_ID, ...), "Score N    Best M".
+       Best is the stored best or the live score, whichever is higher. -->
+  <text x="280" y="140" text-anchor="middle" font-size="15" fill="#000000">Score 3428&#160;&#160;&#160;&#160;Best 11960</text>
+
+  <!-- Board. Game2048Layout::boardGeometry centres the largest square that
+       fits the remaining bounds: with GAP=6 and GRID=4 on a 480px-wide page,
+       pitch = (480-6)/4 = 118, side = 118*4+6 = 478, tileSize = 112.
+       tileRect(row,col) = origin + GAP + index*pitch. -->
+  <g stroke="#000000" stroke-width="2" fill="none">
+    <!-- row 0 -->
+    <rect x="47"  y="238" width="112" height="112" rx="4" fill="url(#dither)"/>
+    <rect x="165" y="238" width="112" height="112" rx="4" fill="url(#dither)"/>
+    <rect x="283" y="238" width="112" height="112" rx="4"/>
+    <rect x="401" y="238" width="112" height="112" rx="4"/>
+    <!-- row 1 -->
+    <rect x="47"  y="356" width="112" height="112" rx="4" fill="url(#dither)"/>
+    <rect x="165" y="356" width="112" height="112" rx="4" fill="url(#dither)"/>
+    <rect x="283" y="356" width="112" height="112" rx="4"/>
+    <rect x="401" y="356" width="112" height="112" rx="4"/>
+    <!-- row 2 -->
+    <rect x="47"  y="474" width="112" height="112" rx="4"/>
+    <rect x="165" y="474" width="112" height="112" rx="4"/>
+    <rect x="283" y="474" width="112" height="112" rx="4"/>
+    <rect x="401" y="474" width="112" height="112" rx="4"/>
+    <!-- row 3 -->
+    <rect x="47"  y="592" width="112" height="112" rx="4"/>
+    <rect x="165" y="592" width="112" height="112" rx="4"/>
+    <rect x="283" y="592" width="112" height="112" rx="4"/>
+    <rect x="401" y="592" width="112" height="112" rx="4"/>
+  </g>
+
+  <!-- Labels. fontForDigits: 1-2 digits use Noto Sans 18, 3-4 digits UI 12.
+       An empty cell (exponent 0) draws its border and nothing else. -->
+  <g text-anchor="middle" fill="#000000">
+    <!-- row 0: 1024  512  64  4 -->
+    <text x="103" y="300" font-size="21">1024</text>
+    <text x="221" y="300" font-size="21">512</text>
+    <text x="339" y="306" font-size="31">64</text>
+    <text x="457" y="306" font-size="31">4</text>
+    <!-- row 1: 256  128  32  2 -->
+    <text x="103" y="418" font-size="21">256</text>
+    <text x="221" y="418" font-size="21">128</text>
+    <text x="339" y="424" font-size="31">32</text>
+    <text x="457" y="424" font-size="31">2</text>
+    <!-- row 2: 16  8  4 -->
+    <text x="103" y="542" font-size="31">16</text>
+    <text x="221" y="542" font-size="31">8</text>
+    <text x="339" y="542" font-size="31">4</text>
+    <!-- row 3: 2 -->
+    <text x="103" y="660" font-size="31">2</text>
+  </g>
+
+  <!-- Button-hints footer. Directions are not listed: they are mapped onto
+       whichever physical buttons point that way in the current orientation. -->
+  <rect x="40" y="792" width="480" height="48" fill="#000000"/>
+  <text x="220" y="822" text-anchor="middle" font-size="13" fill="#ffffff">BACK</text>
+  <text x="400" y="822" text-anchor="middle" font-size="13" fill="#ffffff">NEW GAME</text>
+</svg>

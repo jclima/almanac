@@ -1,0 +1,82 @@
+<svg viewBox="0 0 920 430" xmlns="http://www.w3.org/2000/svg" font-family="Helvetica, Arial, sans-serif">
+  <title>Mini dashboard — how a daily briefing reaches the device</title>
+
+  <rect x="0" y="0" width="920" height="430" fill="#f4f4f4"/>
+
+  <text x="20" y="30" font-size="15" font-weight="bold" fill="#000000">
+    How a daily briefing reaches the device
+  </text>
+  <text x="20" y="52" font-size="12" fill="#666666">
+    Everything up to the upload happens on your computer. No firmware feature is involved.
+  </text>
+
+  <!-- Stage 1: fetch -->
+  <rect x="20" y="70" width="260" height="250" fill="#ffffff" stroke="#000000" stroke-width="2"/>
+  <rect x="20" y="70" width="260" height="34" fill="#000000"/>
+  <text x="34" y="93" font-size="13" font-weight="bold" fill="#ffffff">1 — FETCH</text>
+
+  <g font-size="12" fill="#000000">
+    <text x="34" y="130" font-weight="bold">Open-Meteo</text>
+    <text x="34" y="147" fill="#444444">forecast, sunrise, sunset</text>
+
+    <text x="34" y="177" font-weight="bold">Your RSS feeds</text>
+    <text x="34" y="194" fill="#444444">headlines, configurable</text>
+
+    <text x="34" y="224" font-weight="bold">Moon phase</text>
+    <text x="34" y="241" fill="#444444">computed locally, no network</text>
+
+    <text x="34" y="271" font-weight="bold">OpenSky</text>
+    <text x="34" y="288" fill="#444444">aircraft overhead</text>
+  </g>
+
+  <!-- Stage 2: build -->
+  <rect x="330" y="70" width="260" height="250" fill="#ffffff" stroke="#000000" stroke-width="2"/>
+  <rect x="330" y="70" width="260" height="34" fill="#000000"/>
+  <text x="344" y="93" font-size="13" font-weight="bold" fill="#ffffff">2 — BUILD</text>
+
+  <g font-size="12" fill="#000000">
+    <text x="344" y="130">Each section renders to XHTML</text>
+    <text x="344" y="152">on its own, so one unreachable</text>
+    <text x="344" y="174">source cannot stop the page.</text>
+
+    <text x="344" y="212" font-weight="bold">Dashboard.epub</text>
+    <text x="344" y="234" fill="#444444">packaged with a dated cover,</text>
+    <text x="344" y="252" fill="#444444">the same way the user guide</text>
+    <text x="344" y="270" fill="#444444">EPUB is already built</text>
+  </g>
+
+  <!-- Stage 3: deliver -->
+  <rect x="640" y="70" width="260" height="250" fill="#ffffff" stroke="#000000" stroke-width="2"/>
+  <rect x="640" y="70" width="260" height="34" fill="#000000"/>
+  <text x="654" y="93" font-size="13" font-weight="bold" fill="#ffffff">3 — DELIVER</text>
+
+  <g font-size="12" fill="#000000">
+    <text x="654" y="130" font-family="monospace">POST /delete</text>
+    <text x="654" y="147" fill="#444444">clears yesterday's copy — an</text>
+    <text x="654" y="164" fill="#444444">upload onto an existing path</text>
+    <text x="654" y="181" fill="#444444">is refused, and this also</text>
+    <text x="654" y="198" fill="#444444">clears the book cache</text>
+
+    <text x="654" y="232" font-family="monospace">POST /upload?path=…</text>
+    <text x="654" y="249" fill="#444444">onto the SD card</text>
+
+    <text x="654" y="283" font-weight="bold">Opens like any book</text>
+  </g>
+
+  <!-- Arrows between stages -->
+  <g stroke="#000000" stroke-width="2" fill="#000000">
+    <path d="M 282 195 L 322 195"/>
+    <path d="M 322 195 l -9 -5 l 0 10 Z"/>
+    <path d="M 592 195 L 632 195"/>
+    <path d="M 632 195 l -9 -5 l 0 10 Z"/>
+  </g>
+
+  <!-- What the device contributes -->
+  <rect x="20" y="345" width="880" height="60" fill="#ffffff" stroke="#000000" stroke-width="1"/>
+  <text x="34" y="370" font-size="12" fill="#000000">
+    The device's part: you open File Transfer by hand, and it receives a file. Its radio comes up only for that session.
+  </text>
+  <text x="34" y="391" font-size="12" fill="#444444">
+    No new activity, no background polling, nothing added to the firmware — which is why a tool that reads RSS can exist here at all.
+  </text>
+</svg>
