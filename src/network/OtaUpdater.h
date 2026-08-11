@@ -1,6 +1,12 @@
 #pragma once
 
+// sdkconfig.h is ESP-IDF-only; it supplies CONFIG_IDF_TARGET_ESP32C3 for
+// releaseBinaryRunsOnThisDevice below. The host simulator has no ESP-IDF, and
+// leaving the macro undefined there is the correct answer anyway: no published
+// firmware.bin runs on the host.
+#ifndef SIMULATOR
 #include <sdkconfig.h>
+#endif
 
 #include <string>
 
