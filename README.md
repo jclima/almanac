@@ -1,8 +1,10 @@
 # Almanac
 
 **Almanac** is e-reader firmware for the ESP32-C3-based [Xteink](https://www.xteink.com)
-X4 and X3. It does two things: it renders EPUBs well on a very constrained
-device, and it shows you what is flying overhead.
+X4 and X3. It renders EPUBs well on a very constrained device, and it shows you
+what is flying overhead. Since 1.1.0 it will also keep you occupied for ten
+minutes while you wait — one turn-based puzzle, held to a
+[deliberately narrow bar](SCOPE.md#diversions).
 
 The name is the honest description. A nautical or aeronautical almanac is a
 book of tables you carry to navigate by — part reference, part sky. That is
@@ -62,6 +64,60 @@ Inherited from CrossPoint and unchanged:
 - **Wireless**: file-transfer web UI, EPUB optimiser, web settings, WebDAV,
   AP and STA modes with QR helpers, Calibre wireless, OPDS browser, OTA updates.
 - **Localisation**: 31 UI languages, with RTL support.
+
+### Diversions
+
+One, and it has a frame around it. **2048** sits on the Home screen: four
+directions, one screen update per move, best score kept across games.
+
+![2048 on the Almanac theme — illustrative UI mockup, not a device photo](./docs/images/almanac-2048.svg)
+
+`SCOPE.md` used to rule games out entirely. Rather than quietly cross that line,
+1.1.0 moved it: the Mission gained a third pillar, and a
+[Diversions](SCOPE.md#diversions) section set the bar a diversion has to clear —
+**all four**, not a majority:
+
+1. **Turn-based.** One user action, one screen update. Anything assuming a frame
+   rate is out; this panel refreshes in 770–1720 ms.
+2. **Playable on the buttons we have.** Seven physical, four directional. This
+   is what rules out text adventures, despite their being a natural fit for an
+   e-reader.
+3. **No network.** Ever. Not even optional.
+4. **No steady-state RAM.** State measured in bytes, no heap allocation, nothing
+   retained while you are reading.
+
+2048 qualifies on all four: the board is 16 cells stored as exponents, and the
+feature allocates no heap at all. The game is written to the SD card once, on
+exit, behind a dirty flag — never per move, because erase cycles are finite and
+page turns already spend them.
+
+**Emulators are permanently out**, and `SCOPE.md` records why so the argument
+does not have to be had twice: every working ESP32 port of an NES- or Game
+Boy-class emulator needs PSRAM, which the C3 does not have, at a frame rate this
+panel cannot produce.
+
+### A daily briefing, built on your computer
+
+`scripts/generate_dashboard_epub.py` fetches weather, headlines, sun and moon
+times, and aircraft overhead, renders them into a dated EPUB, and uploads it to
+the device over the File Transfer screen you already use.
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python scripts/generate_dashboard_epub.py
+```
+
+![How the mini dashboard reaches the device](./docs/images/mini-dashboard-flow.svg)
+
+**No firmware code exists for this**, which is the entire design. `SCOPE.md`
+rules out RSS and background connectivity because of what they cost the device
+in RAM, flash and battery; this spends none of them. The radio comes up only for
+the File Transfer session you start by hand, and the device's side of it is
+opening an EPUB, which it already knew how to do.
+
+Every section fails independently — an unreachable source renders as
+"unavailable" with a reason, and the page still builds. Setup, daily use and the
+config reference are in [docs/mini-dashboard.md](docs/mini-dashboard.md).
 
 ### Tesserae sleep screens
 
@@ -284,7 +340,7 @@ Release notes are generated from the commit log **only when**
 `docs/release-notes/almanac-vX.Y.Z.md` doesn't already exist. To ship your
 own prose instead of the generated draft, write that file by hand before
 running the workflow — see
-[almanac-v1.0.2.md](docs/release-notes/almanac-v1.0.2.md) for the bar the
+[almanac-v1.1.0.md](docs/release-notes/almanac-v1.1.0.md) for the bar the
 hand-written ones set; the generated fallback is much plainer.
 
 The workflow only bumps the `**Version X.Y.Z**` marker itself — the rest of
