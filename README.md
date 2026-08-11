@@ -88,12 +88,14 @@ stored choice is ignored and dropped on the next settings save.
 
 ## Status
 
-**Version 1.0.2** — Almanac's own numbering, restarted at 1.0.0 rather than
+**Version 1.1.0** — Almanac's own numbering, restarted at 1.0.0 rather than
 continuing CrossPoint's. Built and flashed on real X4 hardware.
 
-1.0.2 makes both firmware-install paths check the MCU an image was built for,
-so neither the over-the-air update nor the SD-card flash will accept a binary
-meant for the other chip.
+1.1.0 adds 2048 as a Home tile and shows the running firmware version in
+Settings. It is the release that opens `SCOPE.md`'s third mission pillar,
+"Pass the time", behind a four-part bar for what counts as a diversion. It also
+adds a host-side tool that builds a daily weather/news/sky/flights EPUB and
+uploads it over File Transfer, without adding any firmware feature to do it.
 
 Devices on 1.0.0 must be flashed over USB once: that version's update check
 compared uninitialized values and cannot be relied on to find anything. From
