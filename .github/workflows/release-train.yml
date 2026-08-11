@@ -1,0 +1,142 @@
+name: Release Train
+
+# Manual only, by design. A tag here is not just a published page: release.yml
+# attaches firmware.bin and OtaUpdater offers it to every device in the field.
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Which version component to increment
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      allow_any_ref:
+        description: Release even if the dispatched ref is not develop
+        type: boolean
+        default: false
+      allow_docs_only:
+        description: Release even if only docs changed since the last tag
+        type: boolean
+        default: false
+      dry_run:
+        description: Run the gates and print the plan, but push nothing
+        type: boolean
+        default: false
+
+permissions:
+  contents: write # read the repo and the check runs for the gate
+  checks: read
+
+jobs:
+  cut-release:
+    runs-on: ubuntu-latest
+    steps:
+      # The push must NOT use GITHUB_TOKEN: GitHub suppresses workflow
+      # triggers for events it creates, so release.yml would never fire and
+      # the tag would sit there publishing nothing. Fail here rather than
+      # discover that after tagging.
+      - name: Require the release token
+        env:
+          RELEASE_TRAIN_TOKEN: ${{ secrets.RELEASE_TRAIN_TOKEN }}
+        run: |
+          if [ -z "${RELEASE_TRAIN_TOKEN}" ]; then
+            echo "::error::RELEASE_TRAIN_TOKEN is not set. A tag pushed with GITHUB_TOKEN does not start release.yml."
+            exit 1
+          fi
+
+      # Gate A (below) only checks that CI is green on this commit, but
+      # ci.yml also triggers on pull_request -- so a PR branch with green CI
+      # clears Gate A even though its commits never merged into develop.
+      # Gate B then passes trivially too, since a diverged branch differs
+      # from the last tag by construction. Nothing downstream can tell that
+      # apart from a real develop release, so refuse here -- before
+      # checkout, as early as possible -- unless the ref is develop or the
+      # operator explicitly opts out.
+      - name: Gate 0 - releasing from develop
+        if: ${{ github.ref != 'refs/heads/develop' && inputs.allow_any_ref != true }}
+        run: |
+          echo "::error::Release Train must be dispatched against develop (got ${{ github.ref_name }}). CI runs on pull_request, so a PR branch can pass the CI gate and publish firmware built from unmerged code. Re-run with allow_any_ref only if you genuinely mean to release from this ref."
+          exit 1
+
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # tags and full history: the script needs both
+          token: ${{ secrets.RELEASE_TRAIN_TOKEN }}
+
+      - name: Gate A - CI is green on this exact commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SELF_CHECK: ${{ github.job }}
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD)"
+          # Exclude this job's own check run: it is still in_progress with a
+          # null conclusion for the entire duration of this step, so without
+          # this filter Gate A would see itself as an unfinished check and
+          # fail every run, including the first one. Compared against
+          # github.job (not a hardcoded job name), so renaming the job id
+          # cannot silently resurrect the bug -- but github.job always
+          # returns the id, never the check run's displayed name. The two
+          # happen to match today only because this job has no `name:`
+          # override. Do NOT add one: with e.g. `name: Cut Release`, the
+          # check run becomes "Cut Release" while SELF_CHECK still holds
+          # "cut-release", the filter stops matching, and Gate A fails on
+          # every run again. The emptiness check below runs on this
+          # already-filtered list, so "CI never started" still fails
+          # correctly instead of being masked by excluding our own entry.
+          runs="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}/check-runs" --jq '.check_runs[] | select(.name != env.SELF_CHECK) | "\(.name)=\(.status):\(.conclusion)"')"
+          if [ -z "${runs}" ]; then
+            echo "::error::No check runs found for ${sha}. CI has probably not started; refusing to release."
+            exit 1
+          fi
+          echo "${runs}"
+          if echo "${runs}" | grep -qv '=completed:success$'; then
+            echo "::error::Not every check on ${sha} completed successfully."
+            exit 1
+          fi
+
+      - name: Gate B - something other than docs changed
+        run: |
+          set -euo pipefail
+          previous="$(git tag --list 'almanac-v*' | sort -V | tail -1)"
+          changed="$(git diff --name-only "${previous}..HEAD")"
+          echo "${changed}"
+          if [ -z "${changed}" ]; then
+            echo "::error::Nothing changed since ${previous}."
+            exit 1
+          fi
+          if ! echo "${changed}" | grep -qvE '^(docs/|.*\.md$)'; then
+            if [ "${{ inputs.allow_docs_only }}" != "true" ]; then
+              echo "::error::Only docs changed since ${previous}. Re-run with allow_docs_only to release anyway."
+              exit 1
+            fi
+            echo "::warning::Docs-only release, allowed by input."
+          fi
+
+      - name: Bump, draft notes, and stage
+        id: train
+        run: |
+          python3 scripts/release_train.py --bump "${{ inputs.bump }}" ${{ inputs.dry_run && '--dry-run' || '' }}
+
+      - name: Commit, tag and push
+        if: ${{ inputs.dry_run != true }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add platformio.ini README.md docs/release-notes
+          git commit -m "release: ${{ steps.train.outputs.version }}"
+          git tag "${{ steps.train.outputs.tag }}"
+          # Commit and tag together: if this fails because another push landed
+          # first, no tag reaches the remote and re-running is safe.
+          git push --atomic origin HEAD "${{ steps.train.outputs.tag }}"
+
+      - name: Remind about the README prose
+        if: ${{ inputs.dry_run != true }}
+        run: |
+          {
+            echo "### Released ${{ steps.train.outputs.tag }}"
+            echo
+            echo "The README's version line was bumped automatically."
+            echo "Its prose paragraph still describes the previous release - edit it if this one needs different upgrade guidance."
+          } >> "$GITHUB_STEP_SUMMARY"
