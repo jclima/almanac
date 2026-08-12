@@ -179,11 +179,9 @@ build_flags =
   -DFREEINK_DEVICE_M5PAPER=1
   ; the 63KB 540x960 framebuffer lives in PSRAM (FREEINK_FB_PSRAM auto-on)
   -DBOARD_HAS_PSRAM
-  -DALMANAC_VERSION=\"${crosspoint.version}-m5paper\"
+  -DALMANAC_VERSION=\"${almanac.version}-m5paper\"
   -DENABLE_SERIAL_LOG
   -DLOG_LEVEL=2
-  ; touch-first device: hide front-button hint labels
-  -DCROSSPOINT_SHOW_BUTTON_HINTS=0
   ; archive-scan-order workaround: without these a full relink drops Wire's i2c symbols
   -Wl,-u,i2cInit
   -Wl,-u,i2cSlaveInit
@@ -201,10 +199,9 @@ build_flags =
   -DFREEINK_DEVICE_LILYGO=1
   ; board injects the parallel-bus pins + PMIC power hooks (BoardT5S3)
   -DFREEINK_LGFX_EPD_CONFIG=lilygoT5S3LgfxConfig
-  -DALMANAC_VERSION=\"${crosspoint.version}-lilygo\"
+  -DALMANAC_VERSION=\"${almanac.version}-lilygo\"
   -DENABLE_SERIAL_LOG
   -DLOG_LEVEL=2
-  -DCROSSPOINT_SHOW_BUTTON_HINTS=0
 lib_deps =
   ${base.lib_deps}
   ; LgfxEpdConfig for the T5 S3 (pins, PCA9535/TPS65185 power sequence)
