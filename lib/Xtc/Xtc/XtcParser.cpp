@@ -11,6 +11,8 @@
 #include <HalStorage.h>
 #include <Logging.h>
 
+#include <algorithm>
+
 #include <cstring>
 
 namespace xtc {
@@ -322,7 +324,13 @@ XtcError XtcParser::readChapters() {
     return XtcError::READ_ERROR;
   }
 
-  m_chapters.reserve(chapterCount);
+  // chapterCount is derived from a byte range in the file header, so a corrupt
+  // or hostile chapterOffset can make it enormous -- a 5MB file yields ~54k,
+  // and reserve() aborts under -fno-exceptions rather than returning. The read
+  // loop below already stops at the first short read, so capping only the
+  // reservation is safe: a genuinely long book still grows via push_back.
+  constexpr size_t MAX_RESERVED_CHAPTERS = 1024;
+  m_chapters.reserve(std::min(chapterCount, MAX_RESERVED_CHAPTERS));
   std::vector<uint8_t> chapterBuf(chapterSize);
   for (size_t i = 0; i < chapterCount; i++) {
     if (m_file.read(chapterBuf.data(), chapterSize) != chapterSize) {

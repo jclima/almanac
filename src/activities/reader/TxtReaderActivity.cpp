@@ -531,6 +531,18 @@ bool TxtReaderActivity::loadPageIndexCache() {
   uint32_t numPages;
   serialization::readPod(f, numPages);
 
+  // numPages comes straight off the cache and savePageIndexCache() writes
+  // index.bin in place rather than tmp+rename, so a power loss mid-save leaves
+  // a header-complete, body-truncated file that still passes every check above.
+  // Each page contributes one uint32_t, so anything beyond the bytes actually
+  // remaining is corrupt -- and reserve() aborts under -fno-exceptions rather
+  // than returning. Under-reserving is harmless; push_back still grows.
+  const size_t remainingEntries = (f.size() - f.position()) / sizeof(uint32_t);
+  if (numPages > remainingEntries) {
+    LOG_DBG("TRS", "Cache page count %lu exceeds file contents, rebuilding", static_cast<unsigned long>(numPages));
+    return false;
+  }
+
   // Read page offsets
   pageOffsets.clear();
   pageOffsets.reserve(numPages);
