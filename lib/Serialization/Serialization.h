@@ -55,7 +55,19 @@ inline void readString(HalFile& file, std::string& s) {
   // device down rather than being rejected. Nothing can legitimately be longer
   // than the bytes left in the file; yield an empty string for anything that is
   // and let the caller's own validation reject the record.
-  const size_t remaining = file.size() - file.position();
+  // Both are size_t. SdFat's seekSet refuses to move past EOF for a regular
+  // file, so position() <= size() holds today -- but this clamp exists precisely
+  // because callers reach here with offsets from corrupt data, so do not lean on
+  // that invariant: an underflow here would wrap `remaining` huge and make the
+  // check below silently inert.
+  const size_t pos = file.position();
+  const size_t total = file.size();
+  if (pos >= total) {
+    s.clear();
+    return;
+  }
+
+  const size_t remaining = total - pos;
   if (len > remaining) {
     LOG_ERR("SER", "String length %lu exceeds %u bytes left in file", static_cast<unsigned long>(len),
             static_cast<unsigned>(remaining));
