@@ -12,7 +12,6 @@
 #include <Logging.h>
 
 #include <algorithm>
-
 #include <cstring>
 
 namespace xtc {
