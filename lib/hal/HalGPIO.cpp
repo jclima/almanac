@@ -204,29 +204,29 @@ bool HalGPIO::verifyPowerButtonWakeup(uint16_t requiredDurationMs, bool shortPre
     // Fast path - no duration check needed
     return true;
   }
-  // TODO: Intermittent edge case remains: a single tap followed by another single tap
-  // can still power on the device. Tighten wake debounce/state handling here.
-
-  // Calibrate: subtract boot time already elapsed, assuming button held since boot.
+  // Sample once, immediately. A continuous hold from wake is already pressed
+  // here; if it isn't, the wake-triggering press already ended, and treating
+  // a later, unrelated press as its continuation is how two short taps used
+  // to add up to a wake. Reject outright instead of waiting for a fresh press
+  // to arrive.
   const unsigned long calibration = millis();
-  const unsigned long calibratedDuration = (calibration < requiredDurationMs) ? (requiredDurationMs - calibration) : 1;
-
-  const auto start = millis();
   inputMgr.update();
-  // inputMgr.isPressed() may take up to ~500ms to return correct state
-  while (!inputMgr.isPressed(BTN_POWER) && millis() - start < 1000) {
+  LOG_INF("PWR", "verifyPowerButtonWakeup: calibration=%lu requiredDurationMs=%u pressed=%d", calibration,
+          requiredDurationMs, inputMgr.isPressed(BTN_POWER));
+  if (!inputMgr.isPressed(BTN_POWER)) {
+    return false;
+  }
+
+  // The physical press began at or before boot; requiredDurationMs counts
+  // from that true, unobserved start, so credit the elapsed boot time already
+  // spent and keep waiting on this same held press only.
+  const unsigned long calibratedDuration = (calibration < requiredDurationMs) ? (requiredDurationMs - calibration) : 1;
+  LOG_INF("PWR", "verifyPowerButtonWakeup: calibratedDuration=%lu", calibratedDuration);
+  do {
     delay(10);
     inputMgr.update();
-  }
-  if (inputMgr.isPressed(BTN_POWER)) {
-    do {
-      delay(10);
-      inputMgr.update();
-    } while (inputMgr.isPressed(BTN_POWER) && inputMgr.getPowerButtonHeldTime() < calibratedDuration);
-    if (inputMgr.getPowerButtonHeldTime() < calibratedDuration) {
-      return false;
-    }
-  } else {
+  } while (inputMgr.isPressed(BTN_POWER) && inputMgr.getPowerButtonHeldTime() < calibratedDuration);
+  if (inputMgr.getPowerButtonHeldTime() < calibratedDuration) {
     return false;
   }
   return true;
