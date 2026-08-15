@@ -19,6 +19,9 @@ class XtcReaderActivity final : public Activity {
   std::shared_ptr<Xtc> xtc;
 
   uint32_t currentPage = 0;
+  // Last page persisted to progress.bin; the sentinel is not a reachable page
+  // number, so the first render always writes.
+  uint32_t lastSavedPage = UINT32_MAX;
   int pagesUntilFullRefresh = 0;
   // Next-book suggestion menu for the End-of-Book screen
   EndOfBookOptions endOfBookOptions;
@@ -35,7 +38,7 @@ class XtcReaderActivity final : public Activity {
   void openChapterSelection();
   void renderStatusBarOverlay(StatusBarOverlayPosition position) const;
   StatusBarInfo getStatusBarInfo() const;
-  void saveProgress() const;
+  bool saveProgress() const;
   void loadProgress();
 
  public:
