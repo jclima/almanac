@@ -27,11 +27,18 @@ uint32_t hardwareRandom(void*) { return static_cast<uint32_t>(random(INT32_MAX))
 // that reads without being parsed digit by digit.
 constexpr uint8_t DITHER_FROM_EXPONENT = 7;  // 2^7 == 128
 
-// Fewer digits, bigger type. Six digits (131072) still has to fit. These IDs
-// are the ones main.cpp actually registers with the renderer (see
-// src/main.cpp:243-256); an unregistered ID renders nothing.
+// Fewer digits, bigger type. Six digits (131072) still has to fit.
+// An unregistered font ID renders nothing -- silently, with no error -- and
+// main.cpp registers the Noto Sans family inside `#ifndef OMIT_FONTS`, so on a
+// slim build NOTOSANS_18 is absent and every 1-2 digit tile (2 through 64)
+// would come up blank. Only UI_10, UI_12, SMALL and NOTOSERIF_14 are
+// registered unconditionally, so fall back to the largest guaranteed face.
 int fontForDigits(const int digits) {
+#ifndef OMIT_FONTS
   if (digits <= 2) return NOTOSANS_18_FONT_ID;
+#else
+  if (digits <= 2) return UI_12_FONT_ID;
+#endif
   if (digits <= 4) return UI_12_FONT_ID;
   return UI_10_FONT_ID;
 }
