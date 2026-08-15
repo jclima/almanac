@@ -341,8 +341,13 @@ void TxtReaderActivity::render(RenderLock&&) {
   renderer.clearScreen();
   renderPage();
 
-  // Save progress
-  saveProgress();
+  // Only persist when the position actually changed. render() also runs on
+  // orientation changes, menu returns and screenshots, and writeAtomic is
+  // several FAT ops behind storageMutex for 4 bytes. Every real page turn
+  // changes currentPage, so progress durability is unaffected.
+  if (currentPage != lastSavedPage && saveProgress()) {
+    lastSavedPage = currentPage;
+  }
 }
 
 void TxtReaderActivity::renderPage() {
@@ -416,7 +421,7 @@ void TxtReaderActivity::renderStatusBar() const {
   GUI.drawStatusBar(renderer, progress, currentPage + 1, totalPages, title);
 }
 
-void TxtReaderActivity::saveProgress() const {
+bool TxtReaderActivity::saveProgress() const {
   uint8_t data[4];
   data[0] = currentPage & 0xFF;
   data[1] = (currentPage >> 8) & 0xFF;
@@ -424,7 +429,9 @@ void TxtReaderActivity::saveProgress() const {
   data[3] = 0;
   if (!ProgressFile::writeAtomic(txt->getCachePath(), data, sizeof(data))) {
     LOG_ERR("TRS", "Failed to save progress: page %d", currentPage);
+    return false;
   }
+  return true;
 }
 
 void TxtReaderActivity::loadProgress() {
@@ -523,6 +530,18 @@ bool TxtReaderActivity::loadPageIndexCache() {
 
   uint32_t numPages;
   serialization::readPod(f, numPages);
+
+  // numPages comes straight off the cache and savePageIndexCache() writes
+  // index.bin in place rather than tmp+rename, so a power loss mid-save leaves
+  // a header-complete, body-truncated file that still passes every check above.
+  // Each page contributes one uint32_t, so anything beyond the bytes actually
+  // remaining is corrupt -- and reserve() aborts under -fno-exceptions rather
+  // than returning. Under-reserving is harmless; push_back still grows.
+  const size_t remainingEntries = (f.size() - f.position()) / sizeof(uint32_t);
+  if (numPages > remainingEntries) {
+    LOG_DBG("TRS", "Cache page count %lu exceeds file contents, rebuilding", static_cast<unsigned long>(numPages));
+    return false;
+  }
 
   // Read page offsets
   pageOffsets.clear();

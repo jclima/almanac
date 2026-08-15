@@ -4,6 +4,7 @@
 #include <GfxRenderer.h>
 #include <HalStorage.h>
 #include <Logging.h>
+#include <Memory.h>
 #include <Utf8.h>
 #include <XmlParserUtils.h>
 #include <expat.h>
@@ -776,7 +777,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
                   self->completePageFn(std::move(self->currentPage), self->xpathParagraphIndex,
                                        self->xpathListItemIndex, self->currentPageVisibleOffset);
                   self->completedPageCount++;
-                  self->currentPage.reset(new Page());
+                  self->currentPage = makeUniqueNoThrow<Page>();
                   if (!self->currentPage) {
                     LOG_ERR("EHP", "Failed to create new page");
                     return;
@@ -784,7 +785,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
                   self->currentPageNextY = 0;
                   self->currentPageVisibleOffsetSet = false;
                 } else if (!self->currentPage) {
-                  self->currentPage.reset(new Page());
+                  self->currentPage = makeUniqueNoThrow<Page>();
                   if (!self->currentPage) {
                     LOG_ERR("EHP", "Failed to create initial page");
                     return;

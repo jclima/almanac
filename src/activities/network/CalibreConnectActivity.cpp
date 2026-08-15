@@ -52,6 +52,11 @@ void CalibreConnectActivity::onEnter() {
 void CalibreConnectActivity::onExit() {
   Activity::onExit();
 
+  // Must run before the silentRestart() below: only stop() closes the global
+  // wsUploadFile and removes a partial upload. This call was missing, leaving
+  // stopWebServer() with no callers at all.
+  stopWebServer();
+
   MDNS.end();
 
   if (WiFi.getMode() != WIFI_MODE_NULL) {

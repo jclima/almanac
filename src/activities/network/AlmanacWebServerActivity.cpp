@@ -93,6 +93,15 @@ void AlmanacWebServerActivity::onExit() {
   LOG_DBG("WEBACT", "Free heap at onExit start: %d bytes", ESP.getFreeHeap());
 
   state = WebServerActivityState::SHUTTING_DOWN;
+
+  // Must run before the silentRestart() below: only stop() closes the global
+  // wsUploadFile and removes a partial upload. Backing out mid-upload otherwise
+  // reboots with that handle still open, leaving the stub file on the card.
+  if (webServer) {
+    webServer->stop();
+    webServer.reset();
+  }
+
   stopDnsServer();
   MDNS.end();
 

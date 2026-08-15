@@ -170,7 +170,14 @@ void XtcReaderActivity::render(RenderLock&&) {
   }
 
   renderPage();
-  saveProgress();
+
+  // Only persist when the position actually changed. render() also runs on
+  // orientation changes, menu returns and screenshots, and writeAtomic is
+  // several FAT ops behind storageMutex for 4 bytes. Every real page turn
+  // changes currentPage, so progress durability is unaffected.
+  if (currentPage != lastSavedPage && saveProgress()) {
+    lastSavedPage = currentPage;
+  }
 }
 
 XtcReaderActivity::StatusBarInfo XtcReaderActivity::getStatusBarInfo() const {
@@ -427,7 +434,7 @@ void XtcReaderActivity::renderPage() {
   LOG_DBG("XTR", "Rendered page %lu/%lu (%u-bit)", currentPage + 1, xtc->getPageCount(), bitDepth);
 }
 
-void XtcReaderActivity::saveProgress() const {
+bool XtcReaderActivity::saveProgress() const {
   uint8_t data[4];
   data[0] = currentPage & 0xFF;
   data[1] = (currentPage >> 8) & 0xFF;
@@ -435,7 +442,9 @@ void XtcReaderActivity::saveProgress() const {
   data[3] = (currentPage >> 24) & 0xFF;
   if (!ProgressFile::writeAtomic(xtc->getCachePath(), data, sizeof(data))) {
     LOG_ERR("XTR", "Failed to save progress: page %lu", currentPage);
+    return false;
   }
+  return true;
 }
 
 void XtcReaderActivity::loadProgress() {

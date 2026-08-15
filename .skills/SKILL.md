@@ -127,7 +127,10 @@ These flags in `platformio.ini` fundamentally affect firmware behavior:
 - Only ONE framebuffer exists (not double-buffered)
 - Grayscale rendering requires temporary buffer allocation (`renderer.storeBwBuffer()`)
 - Must call `renderer.restoreBwBuffer()` to free temporary buffers
-- See [lib/GfxRenderer/GfxRenderer.cpp:439-440](../lib/GfxRenderer/GfxRenderer.cpp) for malloc usage
+- See `GfxRenderer::storeBwBuffer()` / `restoreBwBuffer()` in
+  [lib/GfxRenderer/GfxRenderer.cpp](../lib/GfxRenderer/GfxRenderer.cpp) — it
+  allocates the saved buffer in *chunks* rather than one 48KB block, so a
+  fragmented heap can still satisfy it
 
 ### Directory Structure
 * lib/: Internal libraries (Epub engine, GfxRenderer, UITheme, I18n)
@@ -269,8 +272,6 @@ When a template is necessary, limit instantiations: use explicit template instan
 
 ### Error Handling Philosophy
 
-**Source**: [src/main.cpp:132-143](../src/main.cpp), [lib/GfxRenderer/GfxRenderer.cpp:10](../lib/GfxRenderer/GfxRenderer.cpp)
-
 **Pattern Hierarchy**:
 1. **LOG_ERR + return false** (90%): `LOG_ERR("MOD", "Failed: %s", reason); return false;`
 2. **LOG_ERR + fallback**: `LOG_ERR("MOD", "Unavailable"); useDefault();`
@@ -314,8 +315,10 @@ sdkApiThatTakesOwnership(buffer, bufferSize);  // SDK calls free() / delete[]
 
 **Examples in codebase**:
 - Memory utilities: [Memory.h](../lib/Memory/Memory.h) (`makeUniqueNoThrow`)
-- Cover image buffers: [HomeActivity.cpp:166](../src/activities/home/HomeActivity.cpp)
-- Bitmap rendering: [GfxRenderer.cpp:439-440](../lib/GfxRenderer/GfxRenderer.cpp)
+- Correct nothrow-with-check: `PageHorizontalRule::deserialize` in
+  [lib/Epub/Epub/Page.cpp](../lib/Epub/Epub/Page.cpp)
+- Multi-buffer unwind on failure: `ZipFile::extract` in
+  [lib/ZipFile/ZipFile.cpp](../lib/ZipFile/ZipFile.cpp)
 
 ### Heap Allocation with `new`: Always Use `makeUniqueNoThrow`
 
@@ -400,62 +403,82 @@ Constraint: Physical button positions are fixed on hardware, but their logical f
 ### Singleton Access
 **Available Singletons**:
 ```cpp
-#define SETTINGS AlmanacSettings::getInstance()  // User settings
-#define APP_STATE AlmanacState::getInstance()    // Runtime state
-#define GUI UITheme::getInstance()                   // Current theme
-#define Storage HalStorage::getInstance()            // SD card I/O
-#define I18N I18n::getInstance()                     // Internationalization
+#define SETTINGS AlmanacSettings::getInstance()   // User settings
+#define APP_STATE AlmanacState::getInstance()     // Runtime state
+#define GUI UITheme::getInstance().getTheme()     // Current theme
+#define Storage HalStorage::getInstance()         // SD card I/O
+#define I18N I18n::getInstance()                  // Internationalization
 ```
+
+Note `GUI` resolves to the **theme**, not the `UITheme` singleton — it ends in
+`.getTheme()`. Code written against `UITheme::getInstance()` will not compile.
 
 ### Activity Lifecycle and Memory Management
 
-**Source**: [src/main.cpp:132-143](../src/main.cpp)
+**Source**: [src/activities/ActivityManager.h](../src/activities/ActivityManager.h),
+[src/activities/ActivityManager.cpp](../src/activities/ActivityManager.cpp).
+The migration from the older per-activity model is documented in
+[docs/activity-manager.md](../docs/activity-manager.md).
 
-**CRITICAL**: Activities are **heap-allocated** and **deleted on exit**.
+Activities are owned by the `activityManager` singleton as `std::unique_ptr`.
+There is no manual `delete` and no navigation free function in `main.cpp` —
+destruction happens when the owning `unique_ptr` is reset or replaced.
 
+**Navigation** (never construct-and-assign an activity yourself):
 ```cpp
-// main.cpp navigation pattern
-void exitActivity() {
-  if (currentActivity) {
-    currentActivity->onExit();
-    delete currentActivity;  // Activity deleted here!
-    currentActivity = nullptr;
-  }
-}
-
-void enterNewActivity(Activity* activity) {
-  currentActivity = activity;  // Heap-allocated activity
-  currentActivity->onEnter();
-}
+activityManager.goHome();                 // goTo* wrappers call replaceActivity()
+activityManager.goToReader(path);
+activityManager.replaceActivity(...);     // replaces current, drops the whole stack
+activityManager.pushActivity(...);        // moves current onto the stack (sub-activity)
+activityManager.popActivity();            // back to stack top; goHome() if stack empty
 ```
 
+**Transitions are deferred, not immediate.** When a transition is requested from
+inside an activity's own `loop()`, the manager stores it in `pendingActivity`
+and applies it on the next iteration. This exists to avoid the "delete this"
+problem — an activity must not be destroyed while its own method is on the
+stack. Do not assume the new activity is live on the line after the call.
+
 **Memory Implications**:
-- Activity navigation = `delete` old activity + `new` create next activity
 - Any memory allocated in `onEnter()` MUST be freed in `onExit()`
-- FreeRTOS tasks MUST be deleted in `onExit()` before activity destruction
-- Member `FsFile` handles MUST be closed in `onExit()` (local `FsFile` variables auto-close via destructor)
+- Member `HalFile`/`FsFile` handles MUST be closed in `onExit()` (local `FsFile`
+  variables auto-close via destructor — see `DESTRUCTOR_CLOSES_FILE`)
+- Anything capturing `this` must not outlive the activity's `unique_ptr`
 
 **Activity Pattern**:
 ```cpp
-void onEnter()  { Activity::onEnter(); /* alloc: buffer, tasks */ render(); }
+void onEnter()  { Activity::onEnter(); /* alloc buffers */ render(); }
 void loop()     { mappedInput.update(); /* handle input */ }
-void onExit()   { /* free: vTaskDelete, free buffer, close member FsFiles */ Activity::onExit(); }
+void onExit()   { /* free buffers, close member files */ Activity::onExit(); }
 ```
 
-**Critical**: Free resources in reverse order. Delete tasks BEFORE activity destruction.
+### Rendering and FreeRTOS Tasks
 
-### FreeRTOS Task Guidelines
+**Source**: [src/activities/ActivityManager.cpp](../src/activities/ActivityManager.cpp),
+[docs/activity-manager.md](../docs/activity-manager.md)
 
-**Source**: [src/activities/util/KeyboardEntryActivity.cpp:45-50](../src/activities/util/KeyboardEntryActivity.cpp)
+**Activities do NOT create their own render task.** `ActivityManager` owns a
+single shared render task and a single global rendering mutex; the only
+`xTaskCreate` under `src/activities/` is the manager's own. An activity asks for
+a repaint instead of driving one:
 
-**Pattern**: See Activity Lifecycle above. `xTaskCreate(&taskTrampoline, "Name", stackSize, this, 1, &handle)`
+```cpp
+activityManager.requestUpdate();         // deferred to the end of this loop()
+activityManager.requestUpdate(true);     // immediate
+activityManager.requestUpdateAndWait();  // blocks until the render completes
+```
 
-**Stack Sizing** (in BYTES, not words):
-- **2048**: Simple rendering (most activities)
-- **4096**: Network, EPUB parsing
-- Monitor: `uxTaskGetStackHighWaterMark()` if crashes
+`requestUpdateAndWait()` must NOT be called from the render task or while
+holding a `RenderLock`. Take a `RenderLock` when mutating state the render task
+reads; it acquires the manager's global mutex.
 
-**Rules**: Always `vTaskDelete()` in `onExit()` before destruction. Use mutex if shared state.
+**If** an activity spawns its own task for non-render work (network fetch, long
+parse), it owns that task's lifetime: `vTaskDelete()` it in `onExit()` before
+the activity is destroyed, or the task runs on against a dangling `this`.
+
+**Stack Sizing** (in BYTES, not words): the shared render task and the Arduino
+loop task are both 8192. Monitor with `uxTaskGetStackHighWaterMark()` if you see
+crashes; keep large buffers off the stack (see the Resource Protocol).
 
 ### Global Font Loading
 
@@ -964,9 +987,14 @@ rm -rf /path/to/sd/.crosspoint/epub_<hash>/sections/
 
 **Source**: `lib/Epub/Epub/Section.cpp`, `lib/Epub/Epub/BookMetadataCache.cpp`
 
-**Current Versions** (as of docs/file-formats.md):
-- `book.bin`: **Version 7** (metadata structure)
-- `section.bin`: **Version 25** (layout structure)
+**Current Versions** — these move often; read the constants, not this table:
+- `book.bin`: `BOOK_CACHE_VERSION` in [lib/Epub/Epub/BookMetadataCache.cpp](../lib/Epub/Epub/BookMetadataCache.cpp) (**10** at time of writing)
+- `section.bin`: `SECTION_FILE_VERSION` in [lib/Epub/Epub/Section.cpp](../lib/Epub/Epub/Section.cpp) (**35** at time of writing)
+
+`SECTION_FILE_PARTIAL_VERSION` is *derived* from `SECTION_FILE_VERSION` so the
+suspended-build sentinel can't be left behind when the format changes — bump the
+one constant and the pairing follows. [docs/file-formats.md](../docs/file-formats.md)
+tracks the per-version changelog and is the authoritative description.
 
 **Version Increment Rules**:
 1. **ALWAYS increment version** BEFORE changing binary structure

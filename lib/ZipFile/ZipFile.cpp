@@ -3,6 +3,7 @@
 #include <HalStorage.h>
 #include <InflateStream.h>
 #include <Logging.h>
+#include <Memory.h>
 
 #include <algorithm>
 
@@ -228,20 +229,40 @@ bool ZipFile::loadZipDetails() {
   // We scan the last 1KB (or the whole file if smaller) for the EOCD signature
   // 0x06054b50 is stored as 0x50, 0x4b, 0x05, 0x06 in little-endian
   const int scanRange = fileSize > 1024 ? 1024 : fileSize;
-  const auto buffer = static_cast<uint8_t*>(malloc(scanRange));
+  const auto buffer = makeUniqueNoThrow<uint8_t[]>(scanRange);
   if (!buffer) {
     LOG_ERR("ZIP", "Failed to allocate memory for EOCD scan buffer");
     return false;
   }
 
-  file.seek(fileSize - scanRange);
-  file.read(buffer, scanRange);
+  // Both results are load-bearing: on a short read the buffer keeps whatever was
+  // in the heap, and the scan below would happily match a stray signature in it
+  // and hand back a garbage central directory.
+  if (!file.seek(fileSize - scanRange)) {
+    LOG_ERR("ZIP", "Failed to seek to EOCD scan range");
+    return false;
+  }
+  if (file.read(buffer.get(), scanRange) != scanRange) {
+    LOG_ERR("ZIP", "Short read scanning for EOCD");
+    return false;
+  }
+
+  // Read little-endian fields a byte at a time, as the local-header parse above
+  // does. The scan walks one byte at a time, so a wider load here would be
+  // unaligned three times out of four, which faults on RISC-V.
+  const auto le16 = [&buffer](const int at) -> uint16_t {
+    return static_cast<uint16_t>(buffer[at] | (buffer[at + 1] << 8));
+  };
+  const auto le32 = [&buffer](const int at) -> uint32_t {
+    return static_cast<uint32_t>(buffer[at]) | (static_cast<uint32_t>(buffer[at + 1]) << 8) |
+           (static_cast<uint32_t>(buffer[at + 2]) << 16) | (static_cast<uint32_t>(buffer[at + 3]) << 24);
+  };
 
   // Scan backwards for the signature
   int foundOffset = -1;
   for (int i = scanRange - 22; i >= 0; i--) {
     constexpr uint32_t signature = 0x06054b50;
-    if (*reinterpret_cast<uint32_t*>(&buffer[i]) == signature) {
+    if (le32(i) == signature) {
       foundOffset = i;
       break;
     }
@@ -249,7 +270,6 @@ bool ZipFile::loadZipDetails() {
 
   if (foundOffset == -1) {
     LOG_ERR("ZIP", "EOCD signature not found in zip file");
-    free(buffer);
     return false;
   }
 
@@ -257,11 +277,10 @@ bool ZipFile::loadZipDetails() {
   // Relative positions within EOCD:
   // Offset 10: Total number of entries (2 bytes)
   // Offset 16: Offset of start of central directory with respect to the starting disk number (4 bytes)
-  zipDetails.totalEntries = *reinterpret_cast<uint16_t*>(&buffer[foundOffset + 10]);
-  zipDetails.centralDirOffset = *reinterpret_cast<uint32_t*>(&buffer[foundOffset + 16]);
+  zipDetails.totalEntries = le16(foundOffset + 10);
+  zipDetails.centralDirOffset = le32(foundOffset + 16);
   zipDetails.isSet = true;
 
-  free(buffer);
   return true;
 }
 
